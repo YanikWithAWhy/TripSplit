@@ -20,7 +20,7 @@ import { TripListPage } from './pages/TripListPage'
 import { TripPage } from './pages/TripPage'
 import { homeHref, navigate, tripHref, useRoute } from './router'
 import { buttonSecondary } from './styles'
-import { applyTripDraft, demoTrip, remapIds, withMeFirst, type Me, type TripDraft } from './trips'
+import { applyTripDraft, demoTrip, draftInvites, remapIds, type Me, type TripDraft } from './trips'
 
 const localBackend = createLocalBackend()
 
@@ -167,22 +167,16 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
     const draftTrip = applyTripDraft(draft, null, { id: crypto.randomUUID(), now: now() })
     // The database sets the owner itself; this keeps the screen right until the next reload.
     const created = me ? { ...draftTrip, createdBy: me.userId } : draftTrip
-    dispatch({ type: 'createTrip', trip: created })
+    const invites = draftInvites(draft)
+    dispatch({ type: 'createTrip', trip: created, invites })
     setCreatingTrip(false)
     navigate(tripHref(created.id))
+    if (invites.length > 0) syncFromServer()
   }
 
-  const addDemoTrip = () => {
-    const demo = remapIds(demoTrip('', now()), () => crypto.randomUUID())
-    const trip = me
-      ? {
-          ...withMeFirst(demo, me),
-          createdBy: me.userId,
-          expenses: demo.expenses.map((e) => ({ ...e, createdBy: me.userId })),
-        }
-      : demo
-    dispatch({ type: 'createTrip', trip })
-  }
+  // Only offered without accounts: a real account has no use for made-up people.
+  const addDemoTrip = () =>
+    dispatch({ type: 'createTrip', trip: remapIds(demoTrip('', now()), () => crypto.randomUUID()) })
 
   let content: ReactNode
   if (loadState === 'failed' && trips.length === 0) {
@@ -197,7 +191,7 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
         invitations={invitations}
         onRespond={respondToInvitation}
         onNewTrip={() => setCreatingTrip(true)}
-        onAddDemo={addDemoTrip}
+        onAddDemo={me ? undefined : addDemoTrip}
       />
     )
   } else if (trip) {

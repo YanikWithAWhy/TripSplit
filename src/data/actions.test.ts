@@ -134,3 +134,39 @@ describe('invitations and usernames from the database', () => {
     expect(trip.invitations).toEqual([{ id: 'i1', memberId: 'm2', userId: 'u-ben', username: 'ben' }])
   })
 })
+
+describe('invitations in actions', () => {
+  const base = { ...demoTrip('t1', now), members: [{ id: 'anna', name: 'anna', userId: 'u-anna' }, { id: 'ben', name: 'Ben' }] }
+
+  it('shows invitations right away when a trip is created', () => {
+    const [created] = applyAction([], {
+      type: 'createTrip',
+      trip: { ...base, members: [...base.members, { id: 'c', name: 'clara' }] },
+      invites: [{ memberId: 'c', username: 'clara' }],
+    })
+    expect(created.invitations).toEqual([{ id: 'unsaved-c', memberId: 'c', username: 'clara' }])
+  })
+
+  it("adds new invitations and drops those of people who were removed", () => {
+    const trip = {
+      ...base,
+      invitations: [{ id: 'i-ben', memberId: 'ben', userId: 'u-ben', username: 'ben' }],
+    }
+    const [updated] = applyAction([trip], {
+      type: 'updateTripDetails',
+      tripId: 't1',
+      name: 'Renamed',
+      members: [base.members[0], { id: 'd', name: 'dave' }],
+      invites: [{ memberId: 'd', username: 'dave' }],
+    })
+    expect(updated.invitations).toEqual([{ id: 'unsaved-d', memberId: 'd', username: 'dave' }])
+
+    const [withoutAny] = applyAction([trip], {
+      type: 'updateTripDetails',
+      tripId: 't1',
+      name: 'Renamed',
+      members: [base.members[0]],
+    })
+    expect(withoutAny.invitations).toBeUndefined()
+  })
+})

@@ -14,6 +14,10 @@ interface UsernameComboboxProps {
   /** A suggestion was picked. */
   onSelect: (username: string) => void
   search: (query: string) => Promise<string[]>
+  /** Usernames not to suggest (e.g. already added to the form). */
+  exclude?: string[]
+  /** Enter while no suggestion list is open (e.g. to add the picked username). */
+  onEnter?: () => void
   invalid?: boolean
   describedBy?: string
 }
@@ -30,6 +34,8 @@ export function UsernameCombobox({
   onChange,
   onSelect,
   search,
+  exclude = [],
+  onEnter,
   invalid,
   describedBy,
 }: UsernameComboboxProps) {
@@ -60,7 +66,9 @@ export function UsernameCombobox({
 
   // Narrow the last answer right away while the next one is on its way.
   const suggestions =
-    results && query.startsWith(results.query) ? results.usernames.filter((u) => u.startsWith(query)) : []
+    results && query.startsWith(results.query)
+      ? results.usernames.filter((u) => u.startsWith(query) && !exclude.includes(u))
+      : []
   const searched = results?.query === query
   const showList = open && query.length >= MIN_QUERY && (suggestions.length > 0 || (searched && !loading))
   const activeIndex = Math.min(active, Math.max(0, suggestions.length - 1))
@@ -82,6 +90,10 @@ export function UsernameCombobox({
     } else if (event.key === 'Enter' && showList && suggestions.length > 0) {
       event.preventDefault()
       pick(suggestions[activeIndex])
+    } else if (event.key === 'Enter' && onEnter) {
+      // Don't submit the surrounding form.
+      event.preventDefault()
+      onEnter()
     } else if (event.key === 'Escape' && showList) {
       // Close the list, not the dialog around it.
       event.preventDefault()
@@ -98,7 +110,6 @@ export function UsernameCombobox({
         </span>
         <input
           id={id}
-          data-autofocus
           type="text"
           role="combobox"
           aria-autocomplete="list"

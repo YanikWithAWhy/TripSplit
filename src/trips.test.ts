@@ -7,6 +7,7 @@ import {
   clearSettlements,
   deleteExpense,
   demoTrip,
+  draftInvites,
   findMe,
   memberUsage,
   newTripDraft,
@@ -208,18 +209,19 @@ describe('demoTrip', () => {
 describe('you in a trip', () => {
   const me = { userId: 'user-1', name: 'anna' }
 
-  it('pre-fills the first person of a new trip with you', () => {
+  it('starts a new trip with just you; everyone else is invited', () => {
     const draft = newTripDraft(counter(), me)
-    expect(draft.members).toEqual([
-      { id: 'id-1', name: 'anna', isNew: true, userId: 'user-1' },
-      { id: 'id-2', name: '', isNew: true },
-    ])
+    expect(draft.members).toEqual([{ id: 'id-1', name: 'anna', isNew: true, userId: 'user-1' }])
     draft.name = 'Weekend'
-    draft.members[1].name = 'Ben'
+    expect(validateTripDraft(draft, undefined, { invitePeople: true })?.members).toBe('Invite at least one person.')
+
+    draft.members.push({ id: 'id-2', name: 'ben', isNew: true, inviteUsername: 'ben' })
+    expect(validateTripDraft(draft, undefined, { invitePeople: true })).toBeNull()
+    expect(draftInvites(draft)).toEqual([{ memberId: 'id-2', username: 'ben' }])
     const trip = applyTripDraft(draft, null, { id: 't', now })
     expect(trip.members).toEqual([
       { id: 'id-1', name: 'anna', userId: 'user-1' },
-      { id: 'id-2', name: 'Ben' },
+      { id: 'id-2', name: 'ben' },
     ])
     expect(findMe(trip, 'user-1')).toBe('id-1')
     expect(findMe(trip, 'someone-else')).toBeNull()
@@ -238,6 +240,18 @@ describe('you in a trip', () => {
 
     draft.members = draft.members.filter((m) => m.id !== 'a')
     expect(validateTripDraft(draft, trip)?.members).toBe("anna is linked to an account and can't be removed.")
+  })
+
+  it('refuses the same username twice', () => {
+    const draft = newTripDraft(counter(), me)
+    draft.name = 'Weekend'
+    draft.members.push(
+      { id: 'b1', name: 'ben', isNew: true, inviteUsername: 'ben' },
+      { id: 'b2', name: 'Ben K', isNew: true, inviteUsername: 'ben' },
+    )
+    expect(validateTripDraft(draft, undefined, { invitePeople: true })?.memberNames).toEqual({
+      b2: '@ben is invited twice.',
+    })
   })
 
   it('turns the first demo person into you', () => {

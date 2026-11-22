@@ -1,13 +1,29 @@
 import type { Expense, Member, Settlement } from '../lib'
-import { addExpense, deleteExpense, updateExpense, type Trip } from '../trips'
+import {
+  addExpense,
+  deleteExpense,
+  unsavedInvitationId,
+  updateExpense,
+  type NewInvite,
+  type PendingInvitation,
+  type Trip,
+} from '../trips'
 
 /**
  * Every change the app can make. The UI dispatches actions; the store applies
  * them to the screen right away (applyAction) and a backend saves them.
  */
 export type TripAction =
-  | { type: 'createTrip'; trip: Trip }
-  | { type: 'updateTripDetails'; tripId: string; name: string; members: Member[] }
+  /** `invites` are sent right after the trip is saved (accounts only). */
+  | { type: 'createTrip'; trip: Trip; invites?: NewInvite[] }
+  | {
+      type: 'updateTripDetails'
+      tripId: string
+      name: string
+      members: Member[]
+      /** Sent after saving. Removed people's invitations are taken back by the database. */
+      invites?: NewInvite[]
+    }
   | { type: 'deleteTrip'; tripId: string }
   /** Adds the expense, or replaces the one with the same id. */
   | { type: 'saveExpense'; tripId: string; expense: Expense }
@@ -21,7 +37,7 @@ type TripLevelAction = Exclude<TripAction, { type: 'createTrip' } | { type: 'del
 export function applyAction(trips: Trip[], action: TripAction): Trip[] {
   switch (action.type) {
     case 'createTrip':
-      return [...trips, action.trip]
+      return [...trips, withInvitations(action.trip, action.invites ?? [])]
     case 'deleteTrip':
       return trips.filter((t) => t.id !== action.tripId)
     default:
@@ -32,7 +48,7 @@ export function applyAction(trips: Trip[], action: TripAction): Trip[] {
 function applyToTrip(trip: Trip, action: TripLevelAction): Trip {
   switch (action.type) {
     case 'updateTripDetails':
-      return { ...trip, name: action.name, members: action.members }
+      return withInvitations({ ...trip, name: action.name, members: action.members }, action.invites ?? [])
     case 'saveExpense': {
       const { expense } = action
       const { id, ...value } = expense
@@ -47,4 +63,21 @@ function applyToTrip(trip: Trip, action: TripLevelAction): Trip {
       return { ...trip, settlements: trip.settlements.filter((s) => !ids.has(s.id)) }
     }
   }
+}
+
+/**
+ * Shows new invitations right away (with a placeholder id until the next reload)
+ * and drops those of removed people.
+ */
+function withInvitations(trip: Trip, invites: NewInvite[]): Trip {
+  const memberIds = new Set(trip.members.map((m) => m.id))
+  const kept = (trip.invitations ?? []).filter((i) => memberIds.has(i.memberId))
+  const added: PendingInvitation[] = invites.map((invite) => ({
+    id: unsavedInvitationId(invite.memberId),
+    memberId: invite.memberId,
+    username: invite.username,
+  }))
+  const invitations = [...kept, ...added]
+  const { invitations: _previous, ...rest } = trip
+  return invitations.length > 0 ? { ...rest, invitations } : rest
 }

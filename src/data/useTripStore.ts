@@ -69,6 +69,8 @@ export function useTripStore(backend: TripBackend) {
    * made by others or outside the store. Skipped while own changes are still saving.
    */
   const refresh = useCallback(async () => {
+    // Let own changes (e.g. just-sent invitations) finish saving first.
+    await queueRef.current
     if (pendingRef.current > 0) return
     try {
       const loaded = await backend.load()

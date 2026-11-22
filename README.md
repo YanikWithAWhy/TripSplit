@@ -101,12 +101,19 @@ Schema, Funktionen und Zugriffsregeln in einer In-Memory-Datenbank (PGlite).
 
 ### Freunde einladen
 
-Auf der Reiseseite öffnet **Invite** einen Dialog: Username eintippen (ab zwei Zeichen kommen Vorschläge),
-auswählen, welche Person in der Reise der Freund ist (oder als neue Person hinzufügen), und **Send invitation**.
+Mit Konto besteht eine Reise nur aus echten Konten: In „New trip“ und „Edit trip“ gibt es statt „Add person“
+den Button **Invite person**. Username eintippen (ab zwei Zeichen kommen Vorschläge), auswählen, **Add**, und
+beim Speichern wird die Einladung verschickt. Eine neue Reise startet nur mit dir und braucht mindestens eine
+Einladung. Personen ohne Konto aus älteren Reisen bleiben erhalten; beim Einladen kann man eine davon wählen,
+damit ihre Ausgaben übernommen werden. Wer eingeladen ist, aber wieder aus der Liste entfernt wird, verliert
+die Einladung.
+
 Der Freund sieht die Einladung oben in seiner Reiseliste und kann sie annehmen oder ablehnen. Erst nach dem
 Annehmen hat er Zugriff und ist mit seiner Person verknüpft. Eingeladene können eine Reise über
 „Edit trip“ → **Leave trip** wieder verlassen, löschen kann sie nur der Besitzer. Kehrt man zur App zurück
 (anderer Tab, Handy entsperrt), lädt sie die Reisen neu und zeigt so Änderungen der anderen.
+
+Ohne Konto (nur im Browser) gibt es weiterhin „Add person“ mit freien Namen und die Demo-Reise.
 
 ## Veröffentlichen mit GitHub Pages
 

@@ -27,9 +27,19 @@ export interface PendingInvitation {
   id: string
   /** The person in the trip they will become. */
   memberId: MemberId
-  userId: string
+  /** Missing while the invitation is still being sent. */
+  userId?: string
   username?: string
 }
+
+/** An invitation to send when the trip is saved. */
+export interface NewInvite {
+  memberId: MemberId
+  username: string
+}
+
+/** Placeholder id for an invitation that was just added and isn't saved yet. */
+export const unsavedInvitationId = (memberId: MemberId) => `unsaved-${memberId}`
 
 export const MAX_TRIP_NAME_LENGTH = 60
 export const MAX_MEMBER_NAME_LENGTH = 30
@@ -123,6 +133,8 @@ export interface TripDraftMember {
   isNew: boolean
   /** Linked account, e.g. the signed-in user ("you"). */
   userId?: string
+  /** Username to invite as this person when saving. */
+  inviteUsername?: string
 }
 
 /** The signed-in user, as the app needs them for trips. */
@@ -145,11 +157,13 @@ export interface TripDraftErrors {
   memberNames: Record<MemberId, string>
 }
 
-/** Two rows for people. When signed in, the first one is you, already filled in. */
+/**
+ * Signed in: just you, everyone else is invited by username.
+ * Without an account: two empty rows for names.
+ */
 export function newTripDraft(newId: () => string, me?: Me | null): TripDraft {
-  const members: TripDraftMember[] = Array.from({ length: MIN_MEMBERS }, () => ({ id: newId(), name: '', isNew: true }))
-  if (me) members[0] = { ...members[0], name: me.name, userId: me.userId }
-  return { name: '', members }
+  if (me) return { name: '', members: [{ id: newId(), name: me.name, isNew: true, userId: me.userId }] }
+  return { name: '', members: Array.from({ length: MIN_MEMBERS }, () => ({ id: newId(), name: '', isNew: true })) }
 }
 
 export function tripToDraft(trip: Trip): TripDraft {
@@ -164,8 +178,15 @@ export function tripToDraft(trip: Trip): TripDraft {
   }
 }
 
-/** Returns null when the draft is valid. Pass the saved trip when editing, to check removed members. */
-export function validateTripDraft(draft: TripDraft, trip?: Trip): TripDraftErrors | null {
+/**
+ * Returns null when the draft is valid. Pass the saved trip when editing, to check removed members.
+ * `invitePeople`: people join by invitation (accounts), which changes the wording.
+ */
+export function validateTripDraft(
+  draft: TripDraft,
+  trip?: Trip,
+  { invitePeople = false }: { invitePeople?: boolean } = {},
+): TripDraftErrors | null {
   const errors: TripDraftErrors = { memberNames: {} }
 
   const name = draft.name.trim()
@@ -190,7 +211,7 @@ export function validateTripDraft(draft: TripDraft, trip?: Trip): TripDraftError
   }
 
   if (draft.members.length < MIN_MEMBERS) {
-    errors.members = 'Add at least two people.'
+    errors.members = invitePeople ? 'Invite at least one person.' : 'Add at least two people.'
   }
 
   if (trip) {
@@ -203,6 +224,15 @@ export function validateTripDraft(draft: TripDraft, trip?: Trip): TripDraftError
     } else if (used) {
       errors.members = `${used.name} is part of expenses or repayments and can't be removed.`
     }
+  }
+
+  const invited = new Set<string>()
+  for (const member of draft.members) {
+    if (!member.inviteUsername) continue
+    if (invited.has(member.inviteUsername)) {
+      errors.memberNames[member.id] = `@${member.inviteUsername} is invited twice.`
+    }
+    invited.add(member.inviteUsername)
   }
 
   const hasErrors = errors.name || errors.members || Object.keys(errors.memberNames).length > 0
@@ -219,6 +249,11 @@ export function applyTripDraft(draft: TripDraft, base: Trip | null, meta: { id: 
   }))
   if (base) return { ...base, name, members }
   return { id: meta.id, name, currency: 'EUR', members, expenses: [], settlements: [], createdAt: meta.now }
+}
+
+/** Invitations to send, as chosen in the trip form. (Removing a person takes theirs back.) */
+export function draftInvites(draft: TripDraft): NewInvite[] {
+  return draft.members.flatMap((m) => (m.inviteUsername ? [{ memberId: m.id, username: m.inviteUsername }] : []))
 }
 
 // ---------------------------------------------------------------------------

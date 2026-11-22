@@ -17,7 +17,8 @@ interface TripListPageProps {
   invitations?: IncomingInvitation[]
   onRespond?: (invitation: IncomingInvitation, accept: boolean) => Promise<void>
   onNewTrip: () => void
-  onAddDemo: () => void
+  /** Only without accounts: a demo trip with made-up people. */
+  onAddDemo?: () => void
 }
 
 export function TripListPage({ trips, userId, invitations = [], onRespond, onNewTrip, onAddDemo }: TripListPageProps) {
@@ -71,9 +72,11 @@ export function TripListPage({ trips, userId, invitations = [], onRespond, onNew
               <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
               New trip
             </button>
-            <button type="button" onClick={onAddDemo} className={buttonSecondary}>
-              Add demo trip
-            </button>
+            {onAddDemo && (
+              <button type="button" onClick={onAddDemo} className={buttonSecondary}>
+                Add demo trip
+              </button>
+            )}
           </div>
         </div>
       ) : (

@@ -1,4 +1,4 @@
-import { ChevronLeft, CircleAlert, Plus, UserPlus } from 'lucide-react'
+import { ChevronLeft, CircleAlert, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AvatarStack } from '../components/Avatar'
 import { AnimatedAmount } from '../components/AnimatedAmount'
@@ -8,7 +8,6 @@ import { Dialog } from '../components/Dialog'
 import { ExpenseDetails } from '../components/ExpenseDetails'
 import { ExpenseForm } from '../components/ExpenseForm'
 import { ExpenseList } from '../components/ExpenseList'
-import { InviteForm } from '../components/InviteForm'
 import { SettleUpDetails } from '../components/SettleUpDetails'
 import { SettleUpList } from '../components/SettleUpList'
 import { TripForm } from '../components/TripForm'
@@ -23,7 +22,7 @@ import { stagger } from '../motion'
 import { canEditExpense, canSettle, undoableSettlements } from '../permissions'
 import { homeHref, navigate } from '../router'
 import { buttonGhost, buttonPrimary, buttonSecondary } from '../styles'
-import { applyTripDraft, findMe, type Me, type Trip, type TripDraft } from '../trips'
+import { applyTripDraft, draftInvites, findMe, type Me, type Trip, type TripDraft } from '../trips'
 
 interface TripPageProps {
   trip: Trip
@@ -44,7 +43,6 @@ const SETTLED_DELAY_MS = 700
 
 export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) {
   const social = useSocial()
-  const [inviting, setInviting] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
   const { members } = trip
   const [expenseEditor, setExpenseEditor] = useState<ExpenseEditor | null>(null)
@@ -108,8 +106,11 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
 
   const saveTrip = (draft: TripDraft) => {
     const { name, members: updatedMembers } = applyTripDraft(draft, trip, { id: trip.id, now: trip.createdAt })
-    dispatch({ type: 'updateTripDetails', tripId: trip.id, name, members: updatedMembers })
+    const invites = draftInvites(draft)
+    dispatch({ type: 'updateTripDetails', tripId: trip.id, name, members: updatedMembers, invites })
     setEditingTrip(false)
+    // Load the real invitations (and removed people's withdrawn ones) once saved.
+    if (invites.length > 0 || trip.invitations?.length) onRemoteChange()
   }
 
   const deleteTrip = () => {
@@ -153,12 +154,6 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
               <AvatarStack names={members.map((m) => m.name)} />
               Edit trip
             </button>
-            {social && (
-              <button type="button" onClick={() => setInviting(true)} className={buttonSecondary}>
-                <UserPlus className="size-4" aria-hidden="true" />
-                Invite
-              </button>
-            )}
             <div className="hidden sm:block">
               <button type="button" onClick={() => setExpenseEditor({ mode: 'new' })} className={buttonPrimary}>
                 <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
@@ -341,12 +336,6 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
           onDelete={isOwner ? deleteTrip : undefined}
           onLeave={!isOwner && social ? () => void leaveTrip() : undefined}
         />
-      </Dialog>
-
-      <Dialog open={inviting} onClose={() => setInviting(false)} label="Invite friends">
-        {social && (
-          <InviteForm trip={trip} social={social} onChanged={onRemoteChange} onClose={() => setInviting(false)} />
-        )}
       </Dialog>
     </>
   )

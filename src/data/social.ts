@@ -15,11 +15,11 @@ export interface IncomingInvitation {
 
 /** Inviting friends by username. Only exists with accounts (Supabase). */
 export interface SocialApi {
-  /** Up to 5 usernames starting with `query`, leaving out people already in or invited to the trip. */
-  searchUsernames(query: string, tripId: string): Promise<string[]>
-  /** Invites `username` as an existing person (`memberId`) or as a new one (null). */
-  invite(tripId: string, username: string, memberId: string | null): Promise<void>
-  cancelInvitation(invitationId: string): Promise<void>
+  /**
+   * Up to 5 usernames starting with `query`. With a trip, people already in it or invited are left out.
+   * (Invitations themselves are sent when the trip is saved, see supabase-backend.)
+   */
+  searchUsernames(query: string, tripId: string | null): Promise<string[]>
   myInvitations(): Promise<IncomingInvitation[]>
   /** Returns the trip id. */
   respond(invitationId: string, accept: boolean): Promise<string>
@@ -36,20 +36,6 @@ export function createSocialApi(client: SupabaseClient): SocialApi {
       const { data, error } = await client.rpc('search_usernames', { p_query: query, p_trip_id: tripId })
       if (error) fail(error)
       return (data as { username: string }[]).map((row) => row.username)
-    },
-
-    async invite(tripId, username, memberId) {
-      const { error } = await client.rpc('invite_to_trip', {
-        p_trip_id: tripId,
-        p_username: username,
-        ...(memberId ? { p_member_id: memberId } : {}),
-      })
-      if (error) fail(error)
-    },
-
-    async cancelInvitation(invitationId) {
-      const { error } = await client.rpc('cancel_invitation', { p_invitation_id: invitationId })
-      if (error) fail(error)
     },
 
     async myInvitations() {

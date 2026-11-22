@@ -1,5 +1,5 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
-import type { Trip } from '../trips'
+import type { NewInvite, Trip } from '../trips'
 import type { TripAction } from './actions'
 import type { TripBackend } from './backend'
 import {
@@ -26,6 +26,19 @@ function check(result: { error: PostgrestError | null }) {
 
 /** Loads and saves trips in Supabase. Row level security limits everything to the signed-in user's trips. */
 export function createSupabaseBackend(client: SupabaseClient): TripBackend {
+  /** The people exist after save_trip, so each invitation can point at its person. */
+  const sendInvites = async (tripId: string, invites: NewInvite[]) => {
+    for (const invite of invites) {
+      check(
+        await client.rpc('invite_to_trip', {
+          p_trip_id: tripId,
+          p_username: invite.username,
+          p_member_id: invite.memberId,
+        }),
+      )
+    }
+  }
+
   const findTrip = (trips: Trip[], id: string) => {
     const trip = trips.find((t) => t.id === id)
     if (!trip) throw new Error('Trip not found.')
@@ -55,11 +68,13 @@ export function createSupabaseBackend(client: SupabaseClient): TripBackend {
           if (trip.settlements.length > 0) {
             check(await client.from('settlements').insert(trip.settlements.map((s) => settlementInsert(trip.id, s))))
           }
+          await sendInvites(trip.id, action.invites ?? [])
           return
         }
         case 'updateTripDetails': {
           const trip = findTrip(tripsAfter, action.tripId)
           check(await client.rpc('save_trip', saveTripArgs(trip)))
+          await sendInvites(trip.id, action.invites ?? [])
           return
         }
         case 'deleteTrip':
