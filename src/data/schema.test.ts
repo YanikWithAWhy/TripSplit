@@ -4,6 +4,7 @@ import migration from '../../supabase/migrations/20261122120000_init.sql?raw'
 import profilesMigration from '../../supabase/migrations/20261122140000_profiles.sql?raw'
 import memberAccountsMigration from '../../supabase/migrations/20261122160000_member_accounts.sql?raw'
 import permissionsMigration from '../../supabase/migrations/20261122180000_permissions.sql?raw'
+import invitationsMigration from '../../supabase/migrations/20261122200000_invitations.sql?raw'
 import { computeBalances } from '../lib'
 import type { Settlement } from '../lib'
 import { demoTrip, remapIds, withMeFirst, type Trip } from '../trips'
@@ -81,7 +82,7 @@ function rpc(name: string, args: Record<string, unknown>) {
 
 async function loadTrips(): Promise<Trip[]> {
   const result = await db.query<{ trips: TripRow[] }>(LOAD_TRIPS)
-  return result.rows[0].trips.map(tripFromRow)
+  return result.rows[0].trips.map((row) => tripFromRow(row))
 }
 
 async function insertSettlement(tripId: string, settlement: Settlement) {
@@ -107,6 +108,7 @@ beforeAll(async () => {
   await db.exec(profilesMigration)
   await db.exec(memberAccountsMigration)
   await db.exec(permissionsMigration)
+  await db.exec(invitationsMigration)
   await db.query('insert into auth.users (id) values ($1), ($2)', [ANNA_USER, BEN_USER])
 })
 
@@ -427,5 +429,165 @@ describe('who may change expenses and repayments', () => {
       const left = (await loadTrips()).find((t) => t.id === trip.id)
       expect(left?.settlements.map((s) => s.from)).toEqual([clara.id])
     })
+  })
+})
+
+describe('invitations by username', () => {
+  const CLARA_USER = '00000000-0000-4000-8000-00000000000c'
+  const anna = { id: newId(), name: 'anna', userId: ANNA_USER }
+  const benPlaceholder = { id: newId(), name: 'Ben' }
+  const trip = { id: newId(), name: 'Invite test', currency: 'EUR', members: [anna, benPlaceholder] }
+
+  const search = async (query: string, tripId: string | null = null) =>
+    (await db.query<{ username: string }>('select username from public.search_usernames($1, $2)', [query, tripId])).rows.map(
+      (r) => r.username,
+    )
+  const myInvitations = async () =>
+    (
+      await db.query<{ id: string; trip_name: string; invited_by_username: string; member_name: string }>(
+        'select id, trip_name, invited_by_username, member_name from public.my_invitations()',
+      )
+    ).rows
+  const invite = (username: string, memberId?: string) =>
+    rpc('invite_to_trip', { p_trip_id: trip.id, p_username: username, ...(memberId ? { p_member_id: memberId } : {}) })
+  const respond = (invitationId: string, accept: boolean) =>
+    rpc('respond_to_invitation', { p_invitation_id: invitationId, p_accept: accept })
+  const pendingFor = async (userId: string) =>
+    (
+      await db.query<{ id: string }>(
+        `select id from public.trip_invitations where trip_id = $1 and invited_user = $2 and status = 'pending'`,
+        [trip.id, userId],
+      )
+    ).rows[0]?.id
+  const tripFor = async () => (await loadTrips()).find((t) => t.id === trip.id)
+
+  beforeAll(async () => {
+    // Profiles so far: anna (Anna), ben.k_2 (Ben). Clara joins with an underscore in her name.
+    await db.query('insert into auth.users (id) values ($1)', [CLARA_USER])
+    await db.query('insert into public.profiles (id, username) values ($1, $2)', [CLARA_USER, 'clara_x'])
+    await as(ANNA_USER, () => rpc('save_trip', saveTripArgs(trip)))
+  })
+
+  it('suggests usernames by prefix, never yourself', async () => {
+    await as(ANNA_USER, async () => {
+      expect(await search('b')).toEqual([])
+      expect(await search('be')).toEqual(['ben.k_2'])
+      expect(await search(' @BE ')).toEqual(['ben.k_2'])
+      expect(await search('an')).toEqual([])
+      expect(await search('cl')).toEqual(['clara_x'])
+      // "_" must not act as a wildcard: "clar_" matches nothing.
+      expect(await search('clar_')).toEqual([])
+      expect(await search('clara_')).toEqual(['clara_x'])
+    })
+  })
+
+  it('lets only people on the trip search for it or invite to it', async () => {
+    await as(CLARA_USER, async () => {
+      await expect(search('be', trip.id)).rejects.toThrow(/Trip not found/)
+      await expect(invite('ben.k_2')).rejects.toThrow(/Trip not found/)
+    })
+  })
+
+  it('invites a friend as an existing person; they see it without getting access yet', async () => {
+    await as(ANNA_USER, async () => {
+      await invite('ben.k_2', benPlaceholder.id)
+      expect(await search('be', trip.id)).toEqual([])
+    })
+    await as(BEN_USER, async () => {
+      expect(await myInvitations()).toMatchObject([
+        { trip_name: 'Invite test', invited_by_username: 'anna', member_name: 'Ben' },
+      ])
+      expect(await tripFor()).toBeUndefined()
+      const inviter = await db.query('select username from public.profiles where id = $1', [ANNA_USER])
+      expect(inviter.rows).toEqual([{ username: 'anna' }])
+    })
+  })
+
+  it('rejects unknown usernames, yourself and second invitations', async () => {
+    await as(ANNA_USER, async () => {
+      await expect(invite('nobody')).rejects.toThrow(/no account with the username @nobody/)
+      await expect(invite('anna')).rejects.toThrow(/That's you/)
+      await expect(invite('ben.k_2')).rejects.toThrow(/already been invited/)
+    })
+  })
+
+  it('lets only the invited person answer', async () => {
+    const invitationId = await pendingFor(BEN_USER)
+    expect(invitationId).toBeDefined()
+    await as(CLARA_USER, async () => {
+      await expect(respond(invitationId!, true)).rejects.toThrow(/no longer valid/)
+    })
+  })
+
+  it('gives access and links the person when accepted', async () => {
+    const invitationId = await pendingFor(BEN_USER)
+    await as(BEN_USER, async () => {
+      await respond(invitationId!, true)
+      const joined = await tripFor()
+      expect(joined?.members[1]).toEqual({ ...benPlaceholder, userId: BEN_USER })
+      expect(await myInvitations()).toEqual([])
+      const access = await db.query('select role from public.trip_access where trip_id = $1 and user_id = $2', [
+        trip.id,
+        BEN_USER,
+      ])
+      expect(access.rows).toEqual([{ role: 'editor' }])
+    })
+    await as(ANNA_USER, async () => {
+      const fellow = await db.query('select username from public.profiles where id = $1', [BEN_USER])
+      expect(fellow.rows).toEqual([{ username: 'ben.k_2' }])
+    })
+  })
+
+  it('adds a new person for the invitation, and nothing happens when it is declined', async () => {
+    await as(ANNA_USER, async () => {
+      await invite('clara_x')
+      expect((await tripFor())?.members.map((m) => m.name)).toEqual(['anna', 'Ben', 'clara_x'])
+    })
+    const invitationId = await pendingFor(CLARA_USER)
+    await as(CLARA_USER, async () => {
+      expect(await myInvitations()).toHaveLength(1)
+      await respond(invitationId!, false)
+      expect(await myInvitations()).toEqual([])
+      expect(await tripFor()).toBeUndefined()
+    })
+    await as(ANNA_USER, async () => {
+      expect(await search('cl', trip.id)).toEqual(['clara_x'])
+    })
+  })
+
+  it('takes back an invitation when cancelled or when the person is removed', async () => {
+    const claraPerson = (await as(ANNA_USER, tripFor))!.members.find((m) => m.name === 'clara_x')!
+    await as(ANNA_USER, async () => {
+      await invite('clara_x', claraPerson.id)
+      await rpc('cancel_invitation', { p_invitation_id: (await pendingFor(CLARA_USER))! })
+    })
+    await as(CLARA_USER, async () => expect(await myInvitations()).toEqual([]))
+
+    await as(ANNA_USER, async () => {
+      await invite('clara_x', claraPerson.id)
+      const current = (await tripFor())!
+      await rpc('save_trip', saveTripArgs({ ...current, members: current.members.filter((m) => m.id !== claraPerson.id) }))
+    })
+    await as(CLARA_USER, async () => expect(await myInvitations()).toEqual([]))
+  })
+
+  it('lets invited people leave, but not the owner', async () => {
+    await as(BEN_USER, async () => {
+      await rpc('leave_trip', { p_trip_id: trip.id })
+      expect(await tripFor()).toBeUndefined()
+    })
+    await as(ANNA_USER, async () => {
+      expect((await tripFor())?.members[1]).toEqual(benPlaceholder)
+      await expect(rpc('leave_trip', { p_trip_id: trip.id })).rejects.toThrow(/owner can't leave/)
+    })
+  })
+
+  it('does not let signed-out visitors search', async () => {
+    await db.exec('set role anon')
+    try {
+      await expect(search('be')).rejects.toThrow(/permission denied/)
+    } finally {
+      await db.exec('reset role')
+    }
   })
 })

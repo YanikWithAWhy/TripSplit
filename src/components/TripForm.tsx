@@ -1,4 +1,4 @@
-import { Trash2, UserPlus, X } from 'lucide-react'
+import { LogOut, Trash2, UserPlus, X } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { buttonGhost, buttonPrimary, buttonSecondary, iconButton, labelText, textInput } from '../styles'
 import {
@@ -24,12 +24,14 @@ interface TripFormProps {
   me?: Me | null
   onSubmit: (draft: TripDraft) => void
   onCancel: () => void
-  /** Only when editing. */
+  /** Only for the trip's owner (or without accounts). */
   onDelete?: () => void
+  /** For invited people: leave the trip instead of deleting it. */
+  onLeave?: () => void
 }
 
 /** Create a trip or change its name and people. */
-export function TripForm({ trip, me, onSubmit, onCancel, onDelete }: TripFormProps) {
+export function TripForm({ trip, me, onSubmit, onCancel, onDelete, onLeave }: TripFormProps) {
   const baseId = useId()
   const [draft, setDraft] = useState<TripDraft>(() =>
     trip ? tripToDraft(trip) : newTripDraft(() => crypto.randomUUID(), me),
@@ -141,15 +143,21 @@ export function TripForm({ trip, me, onSubmit, onCancel, onDelete }: TripFormPro
               const usage = trip && !member.isNew ? memberUsage(trip, member.id) : 0
               const isMe = Boolean(me && member.userId === me.userId)
               const linkedToOther = Boolean(member.userId) && !isMe
+              const saved = trip?.members.find((m) => m.id === member.id)
+              const invitation = trip?.invitations?.find((i) => i.memberId === member.id)
               const inputId = memberInputId(member.id)
               const error = shown?.memberNames[member.id]
               const errorId = error ? `${inputId}-error` : undefined
               const label = member.name.trim() || `person ${index + 1}`
               const hint = linkedToOther
-                ? "Linked to an account, so can't be removed"
-                : !isMe && usage > 0
-                  ? "Part of expenses, so can't be removed"
-                  : null
+                ? saved?.username
+                  ? `@${saved.username} · linked to an account, so can't be removed`
+                  : "Linked to an account, so can't be removed"
+                : invitation
+                  ? `Invited @${invitation.username ?? 'unknown'} · removing them cancels the invitation`
+                  : !isMe && usage > 0
+                    ? "Part of expenses, so can't be removed"
+                    : null
               return (
                 <li key={member.id}>
                   <div className="flex items-center gap-2">
@@ -200,16 +208,16 @@ export function TripForm({ trip, me, onSubmit, onCancel, onDelete }: TripFormPro
       </div>
 
       <div className="flex items-center gap-2 border-t border-line px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6">
-        {onDelete &&
+        {(onDelete ?? onLeave) &&
           (confirmingDelete ? (
-            <button type="button" onClick={onDelete} className={buttonSecondary}>
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete for good
+            <button type="button" onClick={onDelete ?? onLeave} className={buttonSecondary}>
+              {onDelete ? <Trash2 className="size-4" aria-hidden="true" /> : <LogOut className="size-4" aria-hidden="true" />}
+              {onDelete ? 'Delete for good' : 'Leave for good'}
             </button>
           ) : (
             <button type="button" onClick={() => setConfirmingDelete(true)} className={`-ml-2 ${buttonGhost}`}>
-              <Trash2 className="size-4" aria-hidden="true" />
-              Delete trip
+              {onDelete ? <Trash2 className="size-4" aria-hidden="true" /> : <LogOut className="size-4" aria-hidden="true" />}
+              {onDelete ? 'Delete trip' : 'Leave trip'}
             </button>
           ))}
         <div className="ml-auto flex gap-2">

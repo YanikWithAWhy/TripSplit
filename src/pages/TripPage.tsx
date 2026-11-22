@@ -1,4 +1,4 @@
-import { ChevronLeft, Plus } from 'lucide-react'
+import { ChevronLeft, CircleAlert, Plus, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AvatarStack } from '../components/Avatar'
 import { AnimatedAmount } from '../components/AnimatedAmount'
@@ -8,6 +8,7 @@ import { Dialog } from '../components/Dialog'
 import { ExpenseDetails } from '../components/ExpenseDetails'
 import { ExpenseForm } from '../components/ExpenseForm'
 import { ExpenseList } from '../components/ExpenseList'
+import { InviteForm } from '../components/InviteForm'
 import { SettleUpDetails } from '../components/SettleUpDetails'
 import { SettleUpList } from '../components/SettleUpList'
 import { TripForm } from '../components/TripForm'
@@ -16,6 +17,7 @@ import { formatDateRange, todayIso } from '../format'
 import { computeBalances, formatCents, formatSignedCents, settleUp, totalSpent } from '../lib'
 import type { Cents, Expense, MemberId, Transfer } from '../lib'
 import type { TripAction } from '../data/actions'
+import { useSocial } from '../data/social'
 import { createPeople } from '../people'
 import { stagger } from '../motion'
 import { canEditExpense, canSettle, undoableSettlements } from '../permissions'
@@ -28,6 +30,8 @@ interface TripPageProps {
   dispatch: (action: TripAction) => void
   /** The signed-in user, or null in browser-only mode. */
   me: Me | null
+  /** Reload trips after changes made outside the store (invitations, leaving). */
+  onRemoteChange: () => void
 }
 
 /** new/edit: the form. view: read-only, for expenses the user may not change. */
@@ -38,7 +42,10 @@ type Settling = { transfer: Transfer; balances: Map<MemberId, Cents> }
 /** How long the "Settled up" state stays visible before the dialog closes. */
 const SETTLED_DELAY_MS = 700
 
-export function TripPage({ trip, dispatch, me }: TripPageProps) {
+export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) {
+  const social = useSocial()
+  const [inviting, setInviting] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
   const { members } = trip
   const [expenseEditor, setExpenseEditor] = useState<ExpenseEditor | null>(null)
   const [settling, setSettling] = useState<Settling | null>(null)
@@ -110,6 +117,20 @@ export function TripPage({ trip, dispatch, me }: TripPageProps) {
     dispatch({ type: 'deleteTrip', tripId: trip.id })
   }
 
+  // Only the owner deletes a trip; invited friends can leave it instead.
+  const isOwner = !me || trip.createdBy === me.userId
+  const leaveTrip = async () => {
+    if (!social) return
+    setEditingTrip(false)
+    try {
+      await social.leaveTrip(trip.id)
+      navigate(homeHref)
+      onRemoteChange()
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Something went wrong.')
+    }
+  }
+
   return (
     <>
       <main className="mx-auto max-w-5xl px-4 pt-4 pb-32 sm:px-6 sm:pt-6 sm:pb-16">
@@ -132,6 +153,12 @@ export function TripPage({ trip, dispatch, me }: TripPageProps) {
               <AvatarStack names={members.map((m) => m.name)} />
               Edit trip
             </button>
+            {social && (
+              <button type="button" onClick={() => setInviting(true)} className={buttonSecondary}>
+                <UserPlus className="size-4" aria-hidden="true" />
+                Invite
+              </button>
+            )}
             <div className="hidden sm:block">
               <button type="button" onClick={() => setExpenseEditor({ mode: 'new' })} className={buttonPrimary}>
                 <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
@@ -140,6 +167,13 @@ export function TripPage({ trip, dispatch, me }: TripPageProps) {
             </div>
           </div>
         </section>
+
+        {pageError && (
+          <p role="alert" className="mt-6 flex animate-enter items-start gap-2 rounded-2xl border border-ink p-3 text-sm font-medium">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {pageError}
+          </p>
+        )}
 
         {needsLink && (
           <div
@@ -299,7 +333,20 @@ export function TripPage({ trip, dispatch, me }: TripPageProps) {
       </Dialog>
 
       <Dialog open={editingTrip} onClose={() => setEditingTrip(false)} label="Trip settings">
-        <TripForm trip={trip} me={me} onSubmit={saveTrip} onCancel={() => setEditingTrip(false)} onDelete={deleteTrip} />
+        <TripForm
+          trip={trip}
+          me={me}
+          onSubmit={saveTrip}
+          onCancel={() => setEditingTrip(false)}
+          onDelete={isOwner ? deleteTrip : undefined}
+          onLeave={!isOwner && social ? () => void leaveTrip() : undefined}
+        />
+      </Dialog>
+
+      <Dialog open={inviting} onClose={() => setInviting(false)} label="Invite friends">
+        {social && (
+          <InviteForm trip={trip} social={social} onChanged={onRemoteChange} onClose={() => setInviting(false)} />
+        )}
       </Dialog>
     </>
   )

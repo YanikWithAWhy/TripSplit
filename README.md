@@ -33,6 +33,7 @@ E-Mails gibt es also nur zum Bestätigen der Adresse und zum Zurücksetzen des P
    2. `supabase/migrations/20261122140000_profiles.sql` (Usernames)
    3. `supabase/migrations/20261122160000_member_accounts.sql` (Personen mit Konten verknüpfen)
    4. `supabase/migrations/20261122180000_permissions.sql` (wer was ändern darf)
+   5. `supabase/migrations/20261122200000_invitations.sql` (Freunde per Username einladen)
 
    (Alternativ per CLI: `npx supabase login`, `npx supabase link --project-ref <ref>`, `npx supabase db push`.)
 3. **Authentication → URL Configuration:** Site URL `http://localhost:5173`, dieselbe Adresse auch unter
@@ -88,7 +89,8 @@ Hinweise:
 | `expenses` | Ausgaben in Cent, mit Zahler und Aufteilungsart |
 | `expense_splits` | Wer an einer Ausgabe beteiligt ist (Anteil oder fester Betrag) |
 | `settlements` | Erfasste Rückzahlungen |
-| `profiles` | Username pro Konto, eindeutig; jeder sieht nur das eigene Profil |
+| `profiles` | Username pro Konto, eindeutig; sichtbar nur für dich und Leute, mit denen du eine Reise teilst |
+| `trip_invitations` | Einladungen per Username: offen, angenommen, abgelehnt oder zurückgezogen |
 
 Row Level Security sorgt dafür, dass jedes Konto nur die eigenen Reisen sieht. Innerhalb einer Reise gilt:
 Ausgaben ändern oder löschen darf nur, wer sie angelegt hat, oder der Besitzer der Reise. Rückzahlungen
@@ -96,6 +98,15 @@ erfassen oder rückgängig machen darf nur, wer daran beteiligt ist (Zahler oder
 Konto verknüpft). Die App zeigt nur an, was erlaubt ist (`src/permissions.ts`). Gespeichert wird über die
 Funktionen `save_trip` und `save_expense`, jeweils in einer Transaktion. `src/data/schema.test.ts` testet
 Schema, Funktionen und Zugriffsregeln in einer In-Memory-Datenbank (PGlite).
+
+### Freunde einladen
+
+Auf der Reiseseite öffnet **Invite** einen Dialog: Username eintippen (ab zwei Zeichen kommen Vorschläge),
+auswählen, welche Person in der Reise der Freund ist (oder als neue Person hinzufügen), und **Send invitation**.
+Der Freund sieht die Einladung oben in seiner Reiseliste und kann sie annehmen oder ablehnen. Erst nach dem
+Annehmen hat er Zugriff und ist mit seiner Person verknüpft. Eingeladene können eine Reise über
+„Edit trip“ → **Leave trip** wieder verlassen, löschen kann sie nur der Besitzer. Kehrt man zur App zurück
+(anderer Tab, Handy entsperrt), lädt sie die Reisen neu und zeigt so Änderungen der anderen.
 
 ## Veröffentlichen mit GitHub Pages
 

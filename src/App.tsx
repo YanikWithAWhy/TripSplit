@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Dialog } from './components/Dialog'
 import { Header } from './components/Header'
 import { AccountMenu, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
@@ -7,6 +7,7 @@ import { TripForm } from './components/TripForm'
 import type { TripBackend } from './data/backend'
 import { createLocalBackend } from './data/local-backend'
 import { markPasswordRecovery, setLinkError, useAuthFlow } from './data/auth-flow'
+import { createSocialApi, SocialContext, useSocial, type IncomingInvitation } from './data/social'
 import { createSupabaseBackend } from './data/supabase-backend'
 import { supabase } from './data/supabase-client'
 import { useProfile } from './data/useProfile'
@@ -47,6 +48,7 @@ function AccountApp({ client }: { client: SupabaseClient }) {
   const { recovering, linkError } = useAuthFlow()
   const profile = useProfile(client, session?.user.id)
   const backend = useMemo(() => createSupabaseBackend(client), [client])
+  const social = useMemo(() => createSocialApi(client), [client])
   const signOut = () => void client.auth.signOut()
 
   let content: ReactNode
@@ -78,12 +80,14 @@ function AccountApp({ client }: { client: SupabaseClient }) {
       )
     } else {
       return (
-        <TripApp
-          key={session.user.id}
-          backend={backend}
-          me={{ userId: session.user.id, name: saved.username }}
-          headerRight={<AccountMenu label={`@${saved.username}`} onSignOut={signOut} />}
-        />
+        <SocialContext.Provider value={social}>
+          <TripApp
+            key={session.user.id}
+            backend={backend}
+            me={{ userId: session.user.id, name: saved.username }}
+            headerRight={<AccountMenu label={`@${saved.username}`} onSignOut={signOut} />}
+          />
+        </SocialContext.Provider>
       )
     }
   }
@@ -105,8 +109,46 @@ interface TripAppProps {
 
 function TripApp({ backend, me, headerRight }: TripAppProps) {
   const route = useRoute()
-  const { trips, loadState, syncError, dispatch, reload } = useTripStore(backend)
+  const { trips, loadState, syncError, dispatch, reload, refresh } = useTripStore(backend)
   const [creatingTrip, setCreatingTrip] = useState(false)
+  const social = useSocial()
+  const [invitations, setInvitations] = useState<IncomingInvitation[]>([])
+
+  const loadInvitations = useCallback(() => {
+    social?.myInvitations().then(setInvitations, () => {
+      // Keep the last known invitations when offline.
+    })
+  }, [social])
+
+  /** Picks up changes made by others or outside the store. */
+  const syncFromServer = useCallback(() => {
+    void refresh()
+    loadInvitations()
+  }, [refresh, loadInvitations])
+
+  useEffect(() => {
+    loadInvitations()
+  }, [loadInvitations])
+
+  // Coming back to the app (other tab, phone unlocked): show what friends changed meanwhile.
+  useEffect(() => {
+    if (!social) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncFromServer()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [social, syncFromServer])
+
+  const respondToInvitation = async (invitation: IncomingInvitation, accept: boolean) => {
+    if (!social) return
+    const tripId = await social.respond(invitation.id, accept)
+    setInvitations((list) => list.filter((i) => i.id !== invitation.id))
+    if (accept) {
+      await refresh()
+      navigate(tripHref(tripId))
+    }
+  }
 
   const trip = route.name === 'trip' ? trips.find((t) => t.id === route.tripId) : undefined
   const title = trip ? `${trip.name} · Tripsplit` : 'Tripsplit'
@@ -152,12 +194,14 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
       <TripListPage
         trips={trips}
         userId={me?.userId ?? null}
+        invitations={invitations}
+        onRespond={respondToInvitation}
         onNewTrip={() => setCreatingTrip(true)}
         onAddDemo={addDemoTrip}
       />
     )
   } else if (trip) {
-    content = <TripPage key={trip.id} trip={trip} dispatch={dispatch} me={me} />
+    content = <TripPage key={trip.id} trip={trip} dispatch={dispatch} me={me} onRemoteChange={syncFromServer} />
   } else {
     content = <TripNotFound />
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { demoTrip, remapIds, type Trip } from '../trips'
 import { applyAction } from './actions'
-import { saveExpenseArgs, splitFromRows, splitToPayload } from './supabase-mapping'
+import { accountIds, saveExpenseArgs, splitFromRows, splitToPayload, tripFromRow } from './supabase-mapping'
 
 const now = '2026-11-22T10:00:00.000Z'
 let n = 0
@@ -98,5 +98,39 @@ describe('supabase mapping', () => {
         { member_id: 'david', weight: 2 },
       ],
     })
+  })
+})
+
+describe('invitations and usernames from the database', () => {
+  const row = {
+    id: 't1',
+    name: 'Trip',
+    currency: 'EUR',
+    created_at: '2026-11-22T10:00:00Z',
+    created_by: 'u-anna',
+    members: [
+      { id: 'm1', name: 'Anna', position: 0, user_id: 'u-anna', deleted_at: null },
+      { id: 'm2', name: 'Ben', position: 1, user_id: null, deleted_at: null },
+      { id: 'm3', name: 'Gone', position: 2, user_id: 'u-gone', deleted_at: '2026-11-22T11:00:00Z' },
+    ],
+    expenses: [],
+    settlements: [],
+    trip_invitations: [
+      { id: 'i1', member_id: 'm2', invited_user: 'u-ben', status: 'pending' },
+      { id: 'i0', member_id: 'm2', invited_user: 'u-old', status: 'declined' },
+    ],
+  }
+
+  it('collects the accounts whose usernames are needed', () => {
+    expect(accountIds([row])).toEqual(['u-anna', 'u-ben'])
+  })
+
+  it('adds usernames and keeps only open invitations', () => {
+    const trip = tripFromRow(row, new Map([['u-anna', 'anna'], ['u-ben', 'ben']]))
+    expect(trip.members).toEqual([
+      { id: 'm1', name: 'Anna', userId: 'u-anna', username: 'anna' },
+      { id: 'm2', name: 'Ben' },
+    ])
+    expect(trip.invitations).toEqual([{ id: 'i1', memberId: 'm2', userId: 'u-ben', username: 'ben' }])
   })
 })

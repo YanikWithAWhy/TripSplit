@@ -16,6 +16,8 @@ export function useTripStore(backend: TripBackend) {
   const [syncError, setSyncError] = useState<string | null>(null)
   const tripsRef = useRef<Trip[]>([])
   const queueRef = useRef<Promise<void>>(Promise.resolve())
+  /** Changes not saved yet. A background reload would overwrite them, so it waits. */
+  const pendingRef = useRef(0)
 
   const showLoaded = useCallback((loaded: Trip[]) => {
     tripsRef.current = loaded
@@ -51,14 +53,32 @@ export function useTripStore(backend: TripBackend) {
       const next = applyAction(tripsRef.current, action)
       tripsRef.current = next
       setTrips(next)
+      pendingRef.current += 1
       queueRef.current = queueRef.current
         .then(() => backend.persist(action, next))
         .catch((error: unknown) => setSyncError(messageOf(error)))
+        .finally(() => {
+          pendingRef.current -= 1
+        })
     },
     [backend],
   )
 
-  return { trips, loadState, syncError, dispatch, reload }
+  /**
+   * Loads again in the background, without a loading screen, to pick up changes
+   * made by others or outside the store. Skipped while own changes are still saving.
+   */
+  const refresh = useCallback(async () => {
+    if (pendingRef.current > 0) return
+    try {
+      const loaded = await backend.load()
+      if (pendingRef.current === 0) showLoaded(loaded)
+    } catch {
+      // Offline or similar: keep showing what we have.
+    }
+  }, [backend, showLoaded])
+
+  return { trips, loadState, syncError, dispatch, reload, refresh }
 }
 
 function messageOf(error: unknown): string {

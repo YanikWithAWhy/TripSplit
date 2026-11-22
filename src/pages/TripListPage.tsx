@@ -1,21 +1,26 @@
 import { ChevronRight, Luggage, Plus } from 'lucide-react'
 import { AvatarStack } from '../components/Avatar'
+import { InvitationCard } from '../components/InvitationCard'
+import type { IncomingInvitation } from '../data/social'
 import { formatDateRange } from '../format'
 import { computeBalances, formatCents, formatSignedCents, totalSpent } from '../lib'
 import { tripHref } from '../router'
 import { stagger } from '../motion'
-import { buttonPrimary, buttonSecondary } from '../styles'
+import { buttonPrimary, buttonSecondary, labelText } from '../styles'
 import { findMe, type Trip } from '../trips'
 
 interface TripListPageProps {
   trips: Trip[]
   /** Signed-in user's id, to show their own balance per trip. */
   userId: string | null
+  /** Invitations from friends, waiting for an answer. */
+  invitations?: IncomingInvitation[]
+  onRespond?: (invitation: IncomingInvitation, accept: boolean) => Promise<void>
   onNewTrip: () => void
   onAddDemo: () => void
 }
 
-export function TripListPage({ trips, userId, onNewTrip, onAddDemo }: TripListPageProps) {
+export function TripListPage({ trips, userId, invitations = [], onRespond, onNewTrip, onAddDemo }: TripListPageProps) {
   const sorted = [...trips].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   return (
@@ -36,6 +41,21 @@ export function TripListPage({ trips, userId, onNewTrip, onAddDemo }: TripListPa
           </button>
         )}
       </div>
+
+      {invitations.length > 0 && onRespond && (
+        <section aria-labelledby="invitations-heading" className="mt-8">
+          <h2 id="invitations-heading" className={`animate-enter ${labelText}`}>
+            {invitations.length === 1 ? 'Invitation' : `${invitations.length} invitations`}
+          </h2>
+          <ul className="mt-3 grid gap-4 sm:grid-cols-2">
+            {invitations.map((invitation, index) => (
+              <li key={invitation.id} className="animate-enter" style={stagger(index, 40)}>
+                <InvitationCard invitation={invitation} onRespond={onRespond} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {trips.length === 0 ? (
         <div className="mt-8 flex animate-enter flex-col items-center gap-3 rounded-3xl border border-dashed border-line-strong px-6 py-16 text-center">

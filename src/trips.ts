@@ -18,6 +18,17 @@ export interface Trip {
   createdAt: string
   /** Account that created the trip (its owner). Missing in browser-only mode. */
   createdBy?: string
+  /** Open invitations to this trip (only with accounts). */
+  invitations?: PendingInvitation[]
+}
+
+/** Someone invited by username who hasn't answered yet. */
+export interface PendingInvitation {
+  id: string
+  /** The person in the trip they will become. */
+  memberId: MemberId
+  userId: string
+  username?: string
 }
 
 export const MAX_TRIP_NAME_LENGTH = 60

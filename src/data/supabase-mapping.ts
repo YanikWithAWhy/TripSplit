@@ -52,6 +52,14 @@ export interface TripRow {
   members: MemberRow[]
   expenses: ExpenseRow[]
   settlements: SettlementRow[]
+  trip_invitations?: InvitationRow[]
+}
+
+export interface InvitationRow {
+  id: string
+  member_id: string
+  invited_user: string
+  status: string
 }
 
 /** Select string that loads trips with everything in them (PostgREST embedding). */
@@ -61,14 +69,35 @@ export const TRIP_SELECT = [
   'expenses(id, title, amount_cents, paid_by, spent_on, category, split_type, created_at, created_by, deleted_at,' +
     ' expense_splits(member_id, position, weight, amount_cents))',
   'settlements(id, from_member, to_member, amount_cents, settled_at)',
+  'trip_invitations(id, member_id, invited_user, status)',
 ].join(', ')
 
 const toIso = (timestamp: string) => new Date(timestamp).toISOString()
 const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position
 
-export function tripFromRow(row: TripRow): Trip {
+/** Accounts whose usernames the trips show: linked people and invited friends. */
+export function accountIds(rows: TripRow[]): string[] {
+  const ids = new Set<string>()
+  for (const row of rows) {
+    for (const m of row.members) if (m.user_id && !m.deleted_at) ids.add(m.user_id)
+    for (const i of row.trip_invitations ?? []) if (i.status === 'pending') ids.add(i.invited_user)
+  }
+  return [...ids]
+}
+
+/** `usernames` maps account ids to usernames (see accountIds). */
+export function tripFromRow(row: TripRow, usernames: Map<string, string> = new Map()): Trip {
+  const invitations = (row.trip_invitations ?? [])
+    .filter((i) => i.status === 'pending')
+    .map((i) => ({
+      id: i.id,
+      memberId: i.member_id,
+      userId: i.invited_user,
+      ...(usernames.has(i.invited_user) ? { username: usernames.get(i.invited_user) } : {}),
+    }))
   return {
     ...(row.created_by ? { createdBy: row.created_by } : {}),
+    ...(invitations.length > 0 ? { invitations } : {}),
     id: row.id,
     name: row.name,
     currency: row.currency,
@@ -76,7 +105,11 @@ export function tripFromRow(row: TripRow): Trip {
     members: row.members
       .filter((m) => !m.deleted_at)
       .sort(byPosition)
-      .map((m) => (m.user_id ? { id: m.id, name: m.name, userId: m.user_id } : { id: m.id, name: m.name })),
+      .map((m) => {
+        if (!m.user_id) return { id: m.id, name: m.name }
+        const username = usernames.get(m.user_id)
+        return { id: m.id, name: m.name, userId: m.user_id, ...(username ? { username } : {}) }
+      }),
     expenses: [...row.expenses]
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
       .map(expenseFromRow),

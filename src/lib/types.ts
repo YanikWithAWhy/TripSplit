@@ -12,6 +12,8 @@ export interface Member {
   name: string
   /** The account this person belongs to, if any (e.g. the trip's creator). */
   userId?: string
+  /** Username of that account, when the app may see it (fellow travellers). */
+  username?: string
 }
 
 /** Integer amount in the smallest currency unit (cents). */

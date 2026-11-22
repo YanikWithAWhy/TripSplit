@@ -6,10 +6,19 @@ import {
   saveExpenseArgs,
   saveTripArgs,
   settlementInsert,
+  accountIds,
   TRIP_SELECT,
   tripFromRow,
   type TripRow,
 } from './supabase-mapping'
+
+/** Usernames of fellow travellers and invited friends (the profiles policy allows exactly these). */
+async function loadUsernames(client: SupabaseClient, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data, error } = await client.from('profiles').select('id, username').in('id', ids)
+  if (error) throw new Error(error.message)
+  return new Map((data as { id: string; username: string }[]).map((p) => [p.id, p.username]))
+}
 
 function check(result: { error: PostgrestError | null }) {
   if (result.error) throw new Error(result.error.message)
@@ -29,7 +38,9 @@ export function createSupabaseBackend(client: SupabaseClient): TripBackend {
     async load() {
       const { data, error } = await client.from('trips').select(TRIP_SELECT).order('created_at')
       if (error) throw new Error(error.message)
-      return (data as unknown as TripRow[]).map(tripFromRow)
+      const rows = data as unknown as TripRow[]
+      const usernames = await loadUsernames(client, accountIds(rows))
+      return rows.map((row) => tripFromRow(row, usernames))
     },
 
     async persist(action: TripAction, tripsAfter: Trip[]) {
