@@ -185,7 +185,7 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
           </div>
         )}
 
-        <section aria-label="Summary" className="mt-8 grid gap-4 sm:grid-cols-2">
+        <section aria-label="Summary" className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="animate-enter rounded-3xl bg-ink p-5 text-canvas sm:p-6" style={stagger(1)}>
             <p className="text-xs font-semibold tracking-[0.14em] text-canvas/65 uppercase">Total spent</p>
             <p className="mt-3 text-4xl font-semibold tracking-[-0.03em] tabular-nums sm:text-5xl">
@@ -237,7 +237,7 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
           </div>
         </section>
 
-        <div className="mt-4 grid animate-enter items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]" style={stagger(3)}>
+        <div className="mt-4 grid animate-enter grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px]" style={stagger(3)}>
           <ExpenseList
             expenses={visible}
             members={members}
@@ -245,7 +245,7 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
             onEdit={openExpense}
           />
 
-          <div className="grid gap-4 lg:sticky lg:top-20">
+          <div className="grid grid-cols-1 gap-4 lg:sticky lg:top-20">
             <Card title="Balances">
               <BalanceList members={members} balances={balances} people={people} />
             </Card>

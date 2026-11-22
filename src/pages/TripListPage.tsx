@@ -48,7 +48,7 @@ export function TripListPage({ trips, userId, invitations = [], onRespond, onNew
           <h2 id="invitations-heading" className={`animate-enter ${labelText}`}>
             {invitations.length === 1 ? 'Invitation' : `${invitations.length} invitations`}
           </h2>
-          <ul className="mt-3 grid gap-4 sm:grid-cols-2">
+          <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {invitations.map((invitation, index) => (
               <li key={invitation.id} className="animate-enter" style={stagger(index, 40)}>
                 <InvitationCard invitation={invitation} onRespond={onRespond} />
@@ -80,7 +80,7 @@ export function TripListPage({ trips, userId, invitations = [], onRespond, onNew
           </div>
         </div>
       ) : (
-        <ul className="mt-8 grid gap-4 sm:grid-cols-2">
+        <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {sorted.map((trip, index) => (
             <li key={trip.id} className="animate-enter" style={stagger(index, 60)}>
               <TripCard trip={trip} userId={userId} />

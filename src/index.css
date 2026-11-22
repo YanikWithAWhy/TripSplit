@@ -75,6 +75,14 @@
     cursor: pointer;
   }
 
+  /*
+   * Browsers don't let a fieldset get narrower than its content (min-inline-size: min-content),
+   * so a long, non-wrapping name pushed forms past the right edge on phones.
+   */
+  fieldset {
+    min-inline-size: 0;
+  }
+
   /* No page scrolling behind an open dialog */
   html:has(dialog[open]) {
     overflow: hidden;

@@ -166,7 +166,7 @@ export function UsernameCombobox({
                 }`}
               >
                 <Avatar name={username} size="sm" />
-                <span className="font-medium">@{username}</span>
+                <span className="min-w-0 truncate font-medium">@{username}</span>
               </li>
             ))
           )}
