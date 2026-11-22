@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Dialog } from './components/Dialog'
 import { Header } from './components/Header'
+import { PartyLayer } from './components/PartyLayer'
 import { AccountMenu, LiveIndicator, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
 import { TripForm } from './components/TripForm'
 import type { TripBackend } from './data/backend'
@@ -30,13 +31,19 @@ const localBackend = createLocalBackend()
  * Without: everything stays in this browser, like before.
  */
 export default function App() {
-  if (supabase) return <AccountApp client={supabase} />
   return (
-    <TripApp
-      backend={localBackend}
-      me={null}
-      headerRight={<span className="text-xs text-ink-subtle">Saved in this browser</span>}
-    />
+    <>
+      {supabase ? (
+        <AccountApp client={supabase} />
+      ) : (
+        <TripApp
+          backend={localBackend}
+          me={null}
+          headerRight={<span className="text-xs text-ink-subtle">Saved in this browser</span>}
+        />
+      )}
+      <PartyLayer />
+    </>
   )
 }
 

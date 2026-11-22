@@ -1,0 +1,244 @@
+/*
+ * Party mode 🎉 (easter egg, see src/party.ts): <html data-party> is set after
+ * tapping the logo 5 times. Everything here is deliberately too much.
+ * "Reduce motion" still applies: the global rule in index.css stops the animations.
+ */
+
+html[data-party] {
+  /* Override the design tokens: every component picks these up. */
+  --color-canvas: #1b0036;
+  --color-surface: rgb(40 0 80 / 0.82);
+  --color-raised: rgb(255 0 150 / 0.28);
+  --color-line: #ff4fd8;
+  --color-line-strong: #00e5ff;
+  --color-ink: #ffffff;
+  --color-ink-muted: #ffe066;
+  --color-ink-subtle: #7df9ff;
+  --font-sans: 'Comic Sans MS', 'Comic Neue', 'Chalkboard SE', 'Marker Felt', cursive;
+}
+
+html[data-party] body {
+  background: linear-gradient(120deg, #ff006e, #fb5607, #ffbe0b, #00f5d4, #3a86ff, #8338ec, #ff006e);
+  background-size: 400% 400%;
+  background-attachment: fixed;
+  animation: party-background 14s ease-in-out infinite;
+}
+
+/* Everything slowly drifts through the colour wheel. */
+html[data-party] main {
+  animation: party-hue 18s linear infinite;
+}
+
+/* Rainbow headings */
+html[data-party] h1,
+html[data-party] h2 {
+  background: linear-gradient(90deg, #ff006e, #ffbe0b, #00f5d4, #3a86ff, #c77dff, #ff006e);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: party-slide 4s linear infinite;
+}
+
+html[data-party] h1 {
+  letter-spacing: 0.02em;
+  transform-origin: left center;
+  rotate: -2deg;
+}
+
+/* Glowing amounts */
+html[data-party] .text-4xl,
+html[data-party] .text-5xl,
+html[data-party] .text-lg.font-semibold {
+  text-shadow:
+    0 0 10px #ff4fd8,
+    0 0 24px #00e5ff;
+}
+
+/* Neon cards, slightly tilted */
+html[data-party] .rounded-3xl {
+  box-shadow:
+    0 0 0 3px #ff4fd8,
+    0 0 28px rgb(0 229 255 / 0.55);
+  transition: rotate 300ms, scale 300ms;
+}
+
+html[data-party] main .rounded-3xl {
+  rotate: -0.7deg;
+}
+
+html[data-party] main li:nth-child(even) > .rounded-3xl,
+html[data-party] main section > div:nth-child(even).rounded-3xl {
+  rotate: 0.9deg;
+}
+
+html[data-party] main .rounded-3xl:hover {
+  rotate: 0deg;
+  scale: 1.02;
+}
+
+/* Everything white (main buttons, the total card, pills, balance bars) becomes a moving rainbow. */
+html[data-party] .bg-ink {
+  background-image: linear-gradient(90deg, #ff006e, #fb5607, #ffbe0b, #00f5d4, #3a86ff, #8338ec, #ff006e);
+  background-size: 400% 100%;
+  animation: party-slide 3s linear infinite;
+  color: #ffffff;
+}
+
+/* Wobbly buttons and links */
+html[data-party] button:not(:disabled):hover,
+html[data-party] a:hover {
+  animation: party-wobble 450ms ease-in-out infinite;
+}
+
+/* Spinning avatars, bouncing icon tiles */
+/* Avatars only: tab bars and the settle slider are also round, but must keep still. */
+html[data-party] .rounded-full.bg-raised.place-items-center {
+  background-image: conic-gradient(#ff006e, #ffbe0b, #00f5d4, #3a86ff, #c77dff, #ff006e);
+  animation: party-spin 5s linear infinite;
+}
+
+/* Icon tiles and info boxes, but not the username suggestions (they need to stay clickable). */
+html[data-party] .rounded-2xl.bg-raised:not([role='listbox']) {
+  animation: party-bounce 1.4s ease-in-out infinite;
+}
+
+html[data-party] li:nth-child(3n + 2) .rounded-2xl.bg-raised {
+  animation-delay: -0.45s;
+}
+
+html[data-party] li:nth-child(3n) .rounded-2xl.bg-raised {
+  animation-delay: -0.9s;
+}
+
+/* The logo spins */
+html[data-party] header a > span:first-child {
+  animation: party-spin 2.5s linear infinite;
+}
+
+/* The floating button pulses */
+html[data-party] .fixed.bg-ink {
+  animation:
+    party-slide 3s linear infinite,
+    party-pulse 1.2s ease-in-out infinite;
+}
+
+/* Dialogs glow too */
+html[data-party] .app-dialog {
+  box-shadow:
+    0 0 0 3px #00e5ff,
+    0 0 60px rgb(255 79 216 / 0.8);
+}
+
+html[data-party] .app-dialog[open]::backdrop {
+  background-color: rgb(131 56 236 / 0.55);
+}
+
+html[data-party] ::selection {
+  background: #ffbe0b;
+  color: #1b0036;
+}
+
+/* --- Confetti and floating emojis (src/components/PartyLayer.tsx) --- */
+
+.party-float {
+  position: fixed;
+  bottom: -10vh;
+  z-index: -1;
+  pointer-events: none;
+  animation: party-float linear infinite;
+  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 0.3));
+}
+
+.party-confetti {
+  position: fixed;
+  top: -5vh;
+  z-index: 50;
+  pointer-events: none;
+  animation: party-fall cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+}
+
+@keyframes party-background {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes party-hue {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+
+@keyframes party-slide {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@keyframes party-wobble {
+  0%,
+  100% {
+    rotate: -3deg;
+  }
+  50% {
+    rotate: 3deg;
+  }
+}
+
+@keyframes party-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes party-bounce {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+@keyframes party-pulse {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.08;
+  }
+}
+
+@keyframes party-float {
+  from {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  to {
+    translate: var(--drift, 0px) -125vh;
+    rotate: var(--spin, 360deg);
+  }
+}
+
+@keyframes party-fall {
+  from {
+    translate: 0 0;
+    rotate: 0deg;
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    translate: var(--drift, 0px) 115vh;
+    rotate: var(--spin, 720deg);
+    opacity: 0;
+  }
+}

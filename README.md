@@ -203,6 +203,12 @@ Tokens in `src/index.css` definiert. In Komponenten immer die Token-Klassen verw
 Weitere Regeln: Klickflächen mindestens 44 px hoch, sichtbarer Fokusrahmen, Icons nur von Lucide (keine Emojis),
 und Animationen werden bei „reduzierte Bewegung“ abgeschaltet.
 
+**Easter Egg:** 5-mal schnell (innerhalb von 2 Sekunden) auf „Tripsplit“ oben links tippen schaltet den
+Party-Modus ein: alles bunt, Konfetti, fliegende Emojis. Nochmal 5-mal tippen beendet ihn. Der Modus wird im
+Browser gemerkt (`localStorage`). Logik in `src/party.ts`, Styles in `src/party.css` (überschreibt nur die
+Tokens unter `html[data-party]`), Konfetti und Emojis in `src/components/PartyLayer.tsx`. Hier sind Emojis
+ausdrücklich erlaubt.
+
 ## Grundregeln für die Logik
 
 - **Geld immer als ganze Zahl in Cent** (`€12.50` = `1250`). Keine Kommazahlen.
