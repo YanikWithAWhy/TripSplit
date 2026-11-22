@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Dialog } from './components/Dialog'
 import { Header } from './components/Header'
-import { AccountMenu, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
+import { AccountMenu, LiveIndicator, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
 import { TripForm } from './components/TripForm'
 import type { TripBackend } from './data/backend'
 import { createLocalBackend } from './data/local-backend'
@@ -12,6 +12,7 @@ import { createSupabaseBackend } from './data/supabase-backend'
 import { supabase } from './data/supabase-client'
 import { useProfile } from './data/useProfile'
 import { useSession } from './data/useSession'
+import { useLiveUpdates } from './data/useLiveUpdates'
 import { useTripStore } from './data/useTripStore'
 import { CompleteAccountPage } from './pages/CompleteAccountPage'
 import { SetNewPasswordPage } from './pages/SetNewPasswordPage'
@@ -130,6 +131,9 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
     loadInvitations()
   }, [loadInvitations])
 
+  // Someone else changed something in one of the trips: reload in the background.
+  const live = useLiveUpdates(social, syncFromServer)
+
   // Coming back to the app (other tab, phone unlocked): show what friends changed meanwhile.
   useEffect(() => {
     if (!social) return
@@ -202,7 +206,14 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
 
   return (
     <>
-      <Header right={headerRight} />
+      <Header
+        right={
+          <div className="flex min-w-0 items-center gap-3">
+            {live && <LiveIndicator status={live} />}
+            {headerRight}
+          </div>
+        }
+      />
       {content}
       {syncError && loadState === 'ready' && <SyncErrorBanner message={syncError} onReload={() => void reload()} />}
 

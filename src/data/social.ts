@@ -1,5 +1,6 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import { createContext, useContext } from 'react'
+import { LIVE_TABLES, type LiveStatus } from './live'
 
 /** An invitation the signed-in user received, with what they need to decide. */
 export interface IncomingInvitation {
@@ -24,6 +25,11 @@ export interface SocialApi {
   /** Returns the trip id. */
   respond(invitationId: string, accept: boolean): Promise<string>
   leaveTrip(tripId: string): Promise<void>
+  /**
+   * Calls `onChange` whenever something in the user's trips changes (Supabase Realtime),
+   * and once more after a reconnect, to catch up. Returns a function that stops listening.
+   */
+  watchChanges(onChange: () => void, onStatus: (status: LiveStatus) => void): () => void
 }
 
 function fail(error: PostgrestError): never {
@@ -72,6 +78,27 @@ export function createSocialApi(client: SupabaseClient): SocialApi {
     async leaveTrip(tripId) {
       const { error } = await client.rpc('leave_trip', { p_trip_id: tripId })
       if (error) fail(error)
+    },
+
+    watchChanges(onChange, onStatus) {
+      const channel = client.channel(`trip-changes-${crypto.randomUUID()}`)
+      for (const table of LIVE_TABLES) {
+        // Row level security decides which changes this user receives.
+        channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => onChange())
+      }
+      let connectedBefore = false
+      channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          onStatus('live')
+          if (connectedBefore) onChange()
+          connectedBefore = true
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          onStatus('offline')
+        }
+      })
+      return () => {
+        void client.removeChannel(channel)
+      }
     },
   }
 }

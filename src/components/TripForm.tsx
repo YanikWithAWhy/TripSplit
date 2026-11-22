@@ -52,6 +52,8 @@ export function TripForm({ trip, me, onSubmit, onCancel, onDelete, onLeave }: Tr
   )
   const [showErrors, setShowErrors] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // Who was in the trip when the form opened. Live updates can add people meanwhile.
+  const [initialIds] = useState(() => new Set(trip?.members.map((m) => m.id) ?? []))
   // The "Invite person" panel
   const [inviting, setInviting] = useState(false)
   const [inviteText, setInviteText] = useState('')
@@ -156,7 +158,11 @@ export function TripForm({ trip, me, onSubmit, onCancel, onDelete, onLeave }: Tr
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!errors) {
-      onSubmit(draft)
+      // Keep people someone else added while this form was open (otherwise saving would remove them).
+      const addedByOthers = (trip?.members ?? [])
+        .filter((m) => !initialIds.has(m.id) && !draft.members.some((d) => d.id === m.id))
+        .map((m) => ({ id: m.id, name: m.name, isNew: false, ...(m.userId ? { userId: m.userId } : {}) }))
+      onSubmit(addedByOthers.length > 0 ? { ...draft, members: [...draft.members, ...addedByOthers] } : draft)
       return
     }
     setShowErrors(true)

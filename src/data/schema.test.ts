@@ -5,6 +5,7 @@ import profilesMigration from '../../supabase/migrations/20261122140000_profiles
 import memberAccountsMigration from '../../supabase/migrations/20261122160000_member_accounts.sql?raw'
 import permissionsMigration from '../../supabase/migrations/20261122180000_permissions.sql?raw'
 import invitationsMigration from '../../supabase/migrations/20261122200000_invitations.sql?raw'
+import realtimeMigration from '../../supabase/migrations/20261122220000_realtime.sql?raw'
 import { computeBalances } from '../lib'
 import type { Settlement } from '../lib'
 import { demoTrip, remapIds, withMeFirst, type Trip } from '../trips'
@@ -25,6 +26,7 @@ const SUPABASE_STUB = `
     as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   grant usage on schema auth to anon, authenticated;
   grant usage on schema public to anon, authenticated;
+  create publication supabase_realtime;
 `
 
 /** Returns the same shape as the PostgREST select in TRIP_SELECT. */
@@ -109,6 +111,7 @@ beforeAll(async () => {
   await db.exec(memberAccountsMigration)
   await db.exec(permissionsMigration)
   await db.exec(invitationsMigration)
+  await db.exec(realtimeMigration)
   await db.query('insert into auth.users (id) values ($1), ($2)', [ANNA_USER, BEN_USER])
 })
 
@@ -589,5 +592,31 @@ describe('invitations by username', () => {
     } finally {
       await db.exec('reset role')
     }
+  })
+})
+
+describe('live updates (Realtime)', () => {
+  const published = async () =>
+    (
+      await db.query<{ tablename: string }>(
+        `select tablename from pg_publication_tables where pubname = 'supabase_realtime' order by tablename`,
+      )
+    ).rows.map((r) => r.tablename)
+
+  it('publishes every table the trip screens depend on', async () => {
+    expect(await published()).toEqual([
+      'expense_splits',
+      'expenses',
+      'members',
+      'settlements',
+      'trip_access',
+      'trip_invitations',
+      'trips',
+    ])
+  })
+
+  it('can run again without errors', async () => {
+    await db.exec(realtimeMigration)
+    expect(await published()).toHaveLength(7)
   })
 })

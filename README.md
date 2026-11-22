@@ -34,6 +34,7 @@ E-Mails gibt es also nur zum Bestätigen der Adresse und zum Zurücksetzen des P
    3. `supabase/migrations/20261122160000_member_accounts.sql` (Personen mit Konten verknüpfen)
    4. `supabase/migrations/20261122180000_permissions.sql` (wer was ändern darf)
    5. `supabase/migrations/20261122200000_invitations.sql` (Freunde per Username einladen)
+   6. `supabase/migrations/20261122220000_realtime.sql` (Live-Aktualisierung; darf mehrfach laufen)
 
    (Alternativ per CLI: `npx supabase login`, `npx supabase link --project-ref <ref>`, `npx supabase db push`.)
 3. **Authentication → URL Configuration:** Site URL `http://localhost:5173`, dieselbe Adresse auch unter
@@ -114,6 +115,15 @@ Annehmen hat er Zugriff und ist mit seiner Person verknüpft. Eingeladene könne
 (anderer Tab, Handy entsperrt), lädt sie die Reisen neu und zeigt so Änderungen der anderen.
 
 Ohne Konto (nur im Browser) gibt es weiterhin „Add person“ mit freien Namen und die Demo-Reise.
+
+### Live-Aktualisierung
+
+Ändert jemand anderes etwas an einer Reise (Ausgabe, Rückzahlung, Personen, Einladung), erscheint das bei
+allen anderen sofort, über Supabase Realtime. Die App hört auf Änderungen an den Tabellen aus
+`src/data/live.ts` und lädt dann im Hintergrund neu (mehrere Änderungen kurz hintereinander nur einmal).
+Row Level Security gilt auch hier: Jeder bekommt nur Änderungen an seinen eigenen Reisen. Oben rechts zeigt
+ein Punkt den Zustand: pulsierend = live, leerer Kreis = gerade keine Verbindung (dann wird beim Zurückkehren
+zur App und nach dem Wiederverbinden nachgeladen).
 
 ## Veröffentlichen mit GitHub Pages
 

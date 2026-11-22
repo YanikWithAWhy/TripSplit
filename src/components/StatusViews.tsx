@@ -1,4 +1,5 @@
 import { LoaderCircle, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
+import type { LiveStatus } from '../data/live'
 import { buttonGhost, buttonSecondary } from '../styles'
 
 export function LoadingView({ label = 'Loading…' }: { label?: string }) {
@@ -59,5 +60,25 @@ export function AccountMenu({ label, onSignOut }: { label: string; onSignOut: ()
         Sign out
       </button>
     </div>
+  )
+}
+
+const liveText: Record<LiveStatus, { label: string; title: string }> = {
+  live: { label: 'Live', title: 'Changes by others show up right away' },
+  connecting: { label: 'Connecting…', title: 'Connecting to live updates' },
+  offline: { label: 'Offline', title: 'No live updates right now. Changes show up when you come back to the app.' },
+}
+
+/** Pulsing dot while changes by others arrive live; an empty circle when not connected. */
+export function LiveIndicator({ status }: { status: LiveStatus }) {
+  const { label, title } = liveText[status]
+  return (
+    <span role="status" title={title} className="flex shrink-0 items-center gap-1.5 text-xs text-ink-muted">
+      <span
+        aria-hidden="true"
+        className={`size-2 rounded-full ${status === 'live' ? 'animate-pulse bg-ink' : 'border border-ink-muted'}`}
+      />
+      <span className={status === 'live' ? 'sr-only sm:not-sr-only' : ''}>{label}</span>
+    </span>
   )
 }
