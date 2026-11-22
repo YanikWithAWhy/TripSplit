@@ -1,13 +1,12 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { prefersReducedMotion } from '../motion'
-import { PARTY_TAPS, useParty } from '../party'
+import { useParty } from '../party'
 
 const EMOJIS = ['🎉', '✈️', '🏖️', '🍕', '💸', '🌴', '🍦', '🎈', '🦄', '🌈', '🍹', '🚀', '🪩', '🥳']
 const COLORS = ['#ff006e', '#fb5607', '#ffbe0b', '#00f5d4', '#3a86ff', '#8338ec', '#ffffff']
 const FLOATERS = 16
 const CONFETTI = 90
 const CONFETTI_MS = 4500
-const TOAST_MS = 3500
 
 const random = (min: number, max: number) => min + Math.random() * (max - min)
 const pick = <T,>(items: T[]) => items[Math.floor(Math.random() * items.length)]
@@ -62,17 +61,15 @@ function makeConfetti(): Piece[] {
   })
 }
 
-/** Party mode extras: emojis floating up, a confetti burst when it starts, and a short toast. */
+/** Party mode extras: emojis floating up and a confetti burst when it starts. Purely decorative. */
 export function PartyLayer() {
   const { on, startedAt } = useParty()
   const [floaters] = useState(makeFloaters)
   const [burst, setBurst] = useState<{ startedAt: number; pieces: Piece[] } | null>(null)
-  const [toastFor, setToastFor] = useState(0)
 
   // A fresh confetti burst each time the party starts (not when it was already on after a reload).
   if (on && startedAt > 0 && burst?.startedAt !== startedAt) {
     setBurst({ startedAt, pieces: prefersReducedMotion() ? [] : makeConfetti() })
-    setToastFor(startedAt)
   }
 
   const burstKey = burst?.startedAt ?? 0
@@ -82,37 +79,20 @@ export function PartyLayer() {
     return () => window.clearTimeout(timer)
   }, [burstKey])
 
-  useEffect(() => {
-    if (!toastFor) return
-    const timer = window.setTimeout(() => setToastFor(0), TOAST_MS)
-    return () => window.clearTimeout(timer)
-  }, [toastFor])
-
   if (!on) return null
 
   return (
-    <>
-      <div aria-hidden="true">
-        {floaters.map((piece) => (
-          <span key={piece.id} className="party-float" style={piece.style}>
-            {piece.content}
-          </span>
-        ))}
-        {burst?.pieces.map((piece) => (
-          <span key={`${burst.startedAt}-${piece.id}`} className="party-confetti" style={piece.style}>
-            {piece.content}
-          </span>
-        ))}
-      </div>
-      {toastFor > 0 && (
-        <div
-          role="status"
-          className="fixed inset-x-4 bottom-24 z-50 mx-auto max-w-sm animate-pop rounded-3xl bg-ink px-5 py-4 text-center font-semibold shadow-2xl sm:bottom-8"
-        >
-          🎉 Party mode! 🎉
-          <span className="mt-1 block text-sm font-normal">Tap the logo {PARTY_TAPS}× again to calm things down.</span>
-        </div>
-      )}
-    </>
+    <div aria-hidden="true">
+      {floaters.map((piece) => (
+        <span key={piece.id} className="party-float" style={piece.style}>
+          {piece.content}
+        </span>
+      ))}
+      {burst?.pieces.map((piece) => (
+        <span key={`${burst.startedAt}-${piece.id}`} className="party-confetti" style={piece.style}>
+          {piece.content}
+        </span>
+      ))}
+    </div>
   )
 }

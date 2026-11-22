@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Dialog } from './components/Dialog'
 import { Header } from './components/Header'
 import { PartyLayer } from './components/PartyLayer'
-import { AccountMenu, LiveIndicator, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
+import { AccountMenu, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
 import { TripForm } from './components/TripForm'
 import type { TripBackend } from './data/backend'
 import { createLocalBackend } from './data/local-backend'
@@ -139,7 +139,7 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
   }, [loadInvitations])
 
   // Someone else changed something in one of the trips: reload in the background.
-  const live = useLiveUpdates(social, syncFromServer)
+  useLiveUpdates(social, syncFromServer)
 
   // Coming back to the app (other tab, phone unlocked): show what friends changed meanwhile.
   useEffect(() => {
@@ -213,14 +213,7 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
 
   return (
     <>
-      <Header
-        right={
-          <div className="flex min-w-0 items-center gap-3">
-            {live && <LiveIndicator status={live} />}
-            {headerRight}
-          </div>
-        }
-      />
+      <Header right={headerRight} />
       {content}
       {syncError && loadState === 'ready' && <SyncErrorBanner message={syncError} onReload={() => void reload()} />}
 
