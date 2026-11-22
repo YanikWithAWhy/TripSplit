@@ -1,0 +1,188 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Dialog } from './components/Dialog'
+import { Header } from './components/Header'
+import { AccountMenu, LoadErrorView, LoadingView, SyncErrorBanner } from './components/StatusViews'
+import { TripForm } from './components/TripForm'
+import type { TripBackend } from './data/backend'
+import { createLocalBackend } from './data/local-backend'
+import { markPasswordRecovery, setLinkError, useAuthFlow } from './data/auth-flow'
+import { createSupabaseBackend } from './data/supabase-backend'
+import { supabase } from './data/supabase-client'
+import { useProfile } from './data/useProfile'
+import { useSession } from './data/useSession'
+import { useTripStore } from './data/useTripStore'
+import { CompleteAccountPage } from './pages/CompleteAccountPage'
+import { SetNewPasswordPage } from './pages/SetNewPasswordPage'
+import { SignInPage } from './pages/SignInPage'
+import { TripListPage } from './pages/TripListPage'
+import { TripPage } from './pages/TripPage'
+import { homeHref, navigate, tripHref, useRoute } from './router'
+import { buttonSecondary } from './styles'
+import { applyTripDraft, demoTrip, remapIds, withMeFirst, type Me, type TripDraft } from './trips'
+
+const localBackend = createLocalBackend()
+
+/**
+ * With a Supabase project in .env.local: sign-in, data in the account.
+ * Without: everything stays in this browser, like before.
+ */
+export default function App() {
+  if (supabase) return <AccountApp client={supabase} />
+  return (
+    <TripApp
+      backend={localBackend}
+      me={null}
+      headerRight={<span className="text-xs text-ink-subtle">Saved in this browser</span>}
+    />
+  )
+}
+
+/**
+ * Signed out → sign-in page. Reset link → new password. Confirmed email without
+ * username/password yet → finish the account. Otherwise → the trips.
+ */
+function AccountApp({ client }: { client: SupabaseClient }) {
+  const session = useSession(client)
+  const { recovering, linkError } = useAuthFlow()
+  const profile = useProfile(client, session?.user.id)
+  const backend = useMemo(() => createSupabaseBackend(client), [client])
+  const signOut = () => void client.auth.signOut()
+
+  let content: ReactNode
+  if (session === undefined) {
+    content = <LoadingView />
+  } else if (session === null) {
+    content = <SignInPage client={client} linkError={linkError} onDismissLinkError={() => setLinkError(null)} />
+  } else if (recovering) {
+    content = (
+      <SetNewPasswordPage client={client} email={session.user.email ?? ''} onDone={() => markPasswordRecovery(false)} />
+    )
+  } else if (profile.state.status === 'loading') {
+    content = <LoadingView />
+  } else if (profile.state.status === 'failed') {
+    content = <LoadErrorView title="Couldn't load your account" message={profile.state.message} onRetry={profile.retry} />
+  } else {
+    const hasPassword = session.user.user_metadata?.has_password === true
+    const { profile: saved } = profile.state
+    if (!saved || !hasPassword) {
+      content = (
+        <CompleteAccountPage
+          client={client}
+          userId={session.user.id}
+          email={session.user.email ?? ''}
+          profile={saved}
+          hasPassword={hasPassword}
+          onProfileSaved={profile.setProfile}
+        />
+      )
+    } else {
+      return (
+        <TripApp
+          key={session.user.id}
+          backend={backend}
+          me={{ userId: session.user.id, name: saved.username }}
+          headerRight={<AccountMenu label={`@${saved.username}`} onSignOut={signOut} />}
+        />
+      )
+    }
+  }
+
+  return (
+    <>
+      <Header />
+      {content}
+    </>
+  )
+}
+
+interface TripAppProps {
+  backend: TripBackend
+  /** The signed-in user, or null in browser-only mode. */
+  me: Me | null
+  headerRight: ReactNode
+}
+
+function TripApp({ backend, me, headerRight }: TripAppProps) {
+  const route = useRoute()
+  const { trips, loadState, syncError, dispatch, reload } = useTripStore(backend)
+  const [creatingTrip, setCreatingTrip] = useState(false)
+
+  const trip = route.name === 'trip' ? trips.find((t) => t.id === route.tripId) : undefined
+  const title = trip ? `${trip.name} · Tripsplit` : 'Tripsplit'
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [route])
+
+  useEffect(() => {
+    document.title = title
+  }, [title])
+
+  const now = () => new Date().toISOString()
+
+  const createTrip = (draft: TripDraft) => {
+    const draftTrip = applyTripDraft(draft, null, { id: crypto.randomUUID(), now: now() })
+    // The database sets the owner itself; this keeps the screen right until the next reload.
+    const created = me ? { ...draftTrip, createdBy: me.userId } : draftTrip
+    dispatch({ type: 'createTrip', trip: created })
+    setCreatingTrip(false)
+    navigate(tripHref(created.id))
+  }
+
+  const addDemoTrip = () => {
+    const demo = remapIds(demoTrip('', now()), () => crypto.randomUUID())
+    const trip = me
+      ? {
+          ...withMeFirst(demo, me),
+          createdBy: me.userId,
+          expenses: demo.expenses.map((e) => ({ ...e, createdBy: me.userId })),
+        }
+      : demo
+    dispatch({ type: 'createTrip', trip })
+  }
+
+  let content: ReactNode
+  if (loadState === 'failed' && trips.length === 0) {
+    content = <LoadErrorView message={syncError ?? 'Unknown error.'} onRetry={() => void reload()} />
+  } else if (loadState === 'loading' && trips.length === 0) {
+    content = <LoadingView label="Loading trips…" />
+  } else if (route.name === 'trips') {
+    content = (
+      <TripListPage
+        trips={trips}
+        userId={me?.userId ?? null}
+        onNewTrip={() => setCreatingTrip(true)}
+        onAddDemo={addDemoTrip}
+      />
+    )
+  } else if (trip) {
+    content = <TripPage key={trip.id} trip={trip} dispatch={dispatch} me={me} />
+  } else {
+    content = <TripNotFound />
+  }
+
+  return (
+    <>
+      <Header right={headerRight} />
+      {content}
+      {syncError && loadState === 'ready' && <SyncErrorBanner message={syncError} onReload={() => void reload()} />}
+
+      <Dialog open={creatingTrip} onClose={() => setCreatingTrip(false)} label="New trip">
+        <TripForm me={me} onSubmit={createTrip} onCancel={() => setCreatingTrip(false)} />
+      </Dialog>
+    </>
+  )
+}
+
+function TripNotFound() {
+  return (
+    <main className="animate-enter mx-auto flex max-w-5xl flex-col items-center gap-3 px-4 pt-24 text-center sm:px-6">
+      <h1 className="text-2xl font-semibold">Trip not found</h1>
+      <p className="text-ink-muted">It may have been deleted, or you don't have access to it.</p>
+      <a href={homeHref} className={`mt-3 ${buttonSecondary}`}>
+        Back to all trips
+      </a>
+    </main>
+  )
+}

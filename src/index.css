@@ -1,0 +1,145 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Monochrome: pure black canvas, white text, white as the only accent.
+ * Use these semantic names (bg-canvas, text-ink-muted, border-line, …) instead of raw colors.
+ */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Surfaces */
+  --color-canvas: #000000; /* page background */
+  --color-surface: #0c0c0c; /* cards */
+  --color-raised: #171717; /* elements inside cards (icon tiles, tracks) */
+  --color-line: #262626; /* card borders, dividers */
+  --color-line-strong: #3a3a3a; /* outlined buttons, avatar rings */
+
+  /* Text: both secondary tones keep at least 4.5:1 contrast on every surface */
+  --color-ink: #ffffff;
+  --color-ink-muted: #a3a3a3;
+  --color-ink-subtle: #8a8a8a;
+
+  /*
+   * Motion. One easing for things that arrive (fast start, soft landing) and
+   * short durations: 150 ms for small feedback, ~300 ms for things that move.
+   */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Fade in while moving up a little. Use with stagger() from src/motion.ts for lists. */
+  --animate-enter: enter 380ms var(--ease-out-soft) both;
+  /* Small "pop" for confirmations (check marks). */
+  --animate-pop: pop 420ms var(--ease-spring) both;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+      translate: 0 10px;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      scale: 0.5;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+
+  ::selection {
+    @apply bg-ink text-canvas;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ink;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* No page scrolling behind an open dialog */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  /* Respect "reduce motion": no movement, no delays, things just appear. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * Dialogs slide up and fade in, and fade out again when closing.
+   * allow-discrete keeps the dialog visible (display/top layer) until the fade is done.
+   */
+  .app-dialog {
+    opacity: 0;
+    translate: 0 28px;
+    transition:
+      opacity 220ms var(--ease-out-soft),
+      translate 320ms var(--ease-out-soft),
+      display 320ms allow-discrete,
+      overlay 320ms allow-discrete;
+  }
+
+  .app-dialog[open] {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  @starting-style {
+    .app-dialog[open] {
+      opacity: 0;
+      translate: 0 28px;
+    }
+  }
+
+  .app-dialog::backdrop {
+    background-color: rgb(0 0 0 / 0);
+    backdrop-filter: blur(0);
+    transition:
+      background-color 260ms ease,
+      backdrop-filter 260ms ease,
+      display 320ms allow-discrete,
+      overlay 320ms allow-discrete;
+  }
+
+  .app-dialog[open]::backdrop {
+    background-color: rgb(0 0 0 / 0.75);
+    backdrop-filter: blur(4px);
+  }
+
+  @starting-style {
+    .app-dialog[open]::backdrop {
+      background-color: rgb(0 0 0 / 0);
+      backdrop-filter: blur(0);
+    }
+  }
+}
