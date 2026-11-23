@@ -1,59 +1,79 @@
 # Tripsplit
 
-Web-App (PWA) zum Erfassen und Aufteilen gemeinsamer Ausgaben, z. B. im Urlaub. Die Oberfläche ist auf Englisch.
-„Tripsplit“ ist ein Arbeitstitel. Stack: React + TypeScript + Vite, Tailwind CSS v4, Vitest, Lucide-Icons, Schrift Inter. Später kommt Supabase als Backend dazu.
+A web app for tracking and splitting shared costs, for example on holiday: who paid what, who owes whom, and the
+fewest payments to settle up. Mobile-first, in English, in a black-and-white design. "Tripsplit" is a working title.
 
-## Befehle
+**Stack:** React + TypeScript + Vite, Tailwind CSS v4, Supabase (Postgres, Auth, Realtime, Storage), Vitest, oxlint,
+Lucide icons, Inter font. Hosted on GitHub Pages.
+
+## Features
+
+- **Trips, people and expenses.** Split an expense equally, by shares (e.g. 2:1) or by exact amounts, with categories.
+- **Receipts.** Attach a photo of the receipt to an expense, straight from the camera or from your photos. Photos are
+  shrunk before uploading and only people on the trip can see them.
+- **Balances and settling up.** Everyone's balance, and suggested payments that even everything out with at most
+  n − 1 transfers. Repayments are recorded with a "slide to settle up" control and can be undone.
+- **Accounts.** Sign up with your email (confirmed by a link), then choose a username and password. Forgot your
+  password? Reset it by email. Change your username or password, or delete your account, under **Account**.
+- **Friends.** Invite people by their username (with suggestions while typing). They accept or decline, and can
+  leave a trip later. Changes by others show up right away (live updates).
+- **Permissions.** Only the author of an expense (or the trip's owner) can change it, and only the people involved
+  can settle a payment. The database enforces this, not just the app.
+- **Without an account.** If no Supabase project is configured, everything is saved in the browser, with a demo trip.
+- An easter egg. 🎉
+
+## Getting started
+
+Requirements: **Node.js 24**, ideally 24.15 or newer. Newer versions ship npm 12, the same version the GitHub
+Actions build uses. Older npm versions can write a `package-lock.json` that the build rejects.
 
 ```powershell
-npm install        # Abhängigkeiten installieren
-npm run dev        # Entwicklungsserver auf http://localhost:5173
-npm test           # Tests einmal ausführen
-npm run test:watch # Tests bei jeder Änderung neu ausführen
-npm run typecheck  # TypeScript prüfen
+npm install        # install dependencies
+npm run dev        # dev server on http://localhost:5173
+npm test           # run all tests once
+npm run test:watch # rerun tests on every change
+npm run typecheck  # check TypeScript
 npm run lint       # oxlint
-npm run build      # Produktions-Build nach dist/
+npm run build      # production build into dist/
 ```
 
-## Supabase einrichten
+Without `.env.local` the app runs in **browser-only mode**: no sign-in, everything is stored in `localStorage`
+("Saved in this browser", receipt photos in IndexedDB), and there is a demo trip to try things out. With a Supabase project configured (see
+below), the app requires an account and stores trips in the database.
 
-Ohne Supabase speichert die App alles nur im Browser („Saved in this browser“). Mit Supabase gibt es Konten:
+## Setting up Supabase
 
-- **Konto anlegen:** Unter „Create account“ nur die E-Mail eingeben. Supabase schickt einen Bestätigungslink. Über den
-  Link kommt man zurück in die App und wählt dort **Username** und **Passwort** („Finish your account“).
-- **Anmelden:** E-Mail und Passwort.
-- **Passwort vergessen:** „Forgot your password?“ schickt einen Link, über den man ein neues Passwort wählt.
+1. Create a project on [supabase.com](https://supabase.com), in an EU region (e.g. Frankfurt).
+2. **Create the database schema.** Open the **SQL Editor** in the dashboard and run these files in order:
+   1. `supabase/migrations/20261122120000_init.sql`: trips, people, expenses, repayments
+   2. `supabase/migrations/20261122140000_profiles.sql`: usernames
+   3. `supabase/migrations/20261122160000_member_accounts.sql`: linking people to accounts
+   4. `supabase/migrations/20261122180000_permissions.sql`: who may change what
+   5. `supabase/migrations/20261122200000_invitations.sql`: inviting friends by username
+   6. `supabase/migrations/20261122220000_realtime.sql`: live updates (safe to run more than once)
+   7. `supabase/migrations/20261123100000_account_settings.sql`: changing the username, deleting the account
+   8. `supabase/migrations/20261123120000_receipts.sql`: receipt photos (private Storage bucket and its access rules)
 
-E-Mails gibt es also nur zum Bestätigen der Adresse und zum Zurücksetzen des Passworts, nie zum normalen Anmelden.
+   Run new migrations **before** you publish the app version that needs them. The app loads the new columns right
+   away, and without them it can't load any trips.
 
-1. Auf [supabase.com](https://supabase.com) ein Projekt anlegen, Region in der EU (z. B. Frankfurt).
-2. **Datenbank-Schema einspielen:** Im Dashboard den **SQL Editor** öffnen und nacheinander den Inhalt dieser
-   Dateien einfügen und mit **Run** ausführen:
-   1. `supabase/migrations/20261122120000_init.sql` (Reisen, Ausgaben, …)
-   2. `supabase/migrations/20261122140000_profiles.sql` (Usernames)
-   3. `supabase/migrations/20261122160000_member_accounts.sql` (Personen mit Konten verknüpfen)
-   4. `supabase/migrations/20261122180000_permissions.sql` (wer was ändern darf)
-   5. `supabase/migrations/20261122200000_invitations.sql` (Freunde per Username einladen)
-   6. `supabase/migrations/20261122220000_realtime.sql` (Live-Aktualisierung; darf mehrfach laufen)
+   Alternatively with the CLI: `npx supabase login`, `npx supabase link --project-ref <ref>`, `npx supabase db push`.
+3. **Authentication → URL Configuration:** set the Site URL to `http://localhost:5173` and add the same address under
+   Redirect URLs. Otherwise the links in emails don't lead back to the app. Add the app's public address later.
+4. **Authentication → Sign In / Providers → Email:** turn **Confirm email** on. The app doesn't strictly need it (the
+   link confirms the address anyway), but it stops anyone from creating an account with an unconfirmed address
+   around the app.
+5. **Recommended: adjust the email templates** (Authentication → Emails → Templates). With the default templates, links
+   only work in the browser that requested them. With these links they work on any device, e.g. sign up on a laptop
+   and open the email on a phone:
 
-   (Alternativ per CLI: `npx supabase login`, `npx supabase link --project-ref <ref>`, `npx supabase db push`.)
-3. **Authentication → URL Configuration:** Site URL `http://localhost:5173`, dieselbe Adresse auch unter
-   Redirect URLs eintragen. Sonst führen die Links aus den E-Mails nicht zurück in die App.
-   Später kommt dort die echte Adresse der App dazu.
-4. **Authentication → Sign In / Providers → Email:** „Confirm email“ **einschalten**. Die App braucht das nicht
-   zwingend (der Link bestätigt die Adresse sowieso), aber so kann auch niemand an der App vorbei ein Konto
-   mit Passwort und unbestätigter Adresse anlegen.
-5. **Empfohlen: E-Mail-Vorlagen anpassen** (Authentication → Emails → Templates). Mit den Standardvorlagen
-   funktionieren die Links nur im selben Browser, in dem man sie angefordert hat. Mit diesen Links klappt es
-   auf jedem Gerät, z. B. am Laptop registrieren und die Mail am Handy öffnen:
-
-   | Vorlage | Link im `href` |
+   | Template | Link in the `href` |
    |---|---|
    | Confirm signup | `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email` |
    | Magic Link | `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email` |
    | Reset Password | `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery` |
 
-   Beispiel für „Confirm signup“:
+   Example for "Confirm signup":
 
    ```html
    <h2>Confirm your email</h2>
@@ -61,171 +81,246 @@ E-Mails gibt es also nur zum Bestätigen der Adresse und zum Zurücksetzen des P
    <p><a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email">Confirm email</a></p>
    ```
 
-   „Magic Link“ ist nötig, weil Supabase für die Bestätigung neuer Konten je nach Einstellung diese Vorlage nimmt.
-6. `.env.example` nach `.env.local` kopieren und ausfüllen (Project Settings → API Keys):
-   `VITE_SUPABASE_URL` und `VITE_SUPABASE_KEY` (Publishable Key `sb_publishable_…` oder der alte „anon“-Key).
-   **Nie** den Secret- bzw. `service_role`-Key eintragen. `.env.local` wird nicht ins Git übernommen.
-7. `npm run dev` neu starten.
+   "Magic Link" is needed too: depending on the settings, Supabase uses it to confirm new accounts.
+6. Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` (Project Settings →
+   API Keys; the publishable key `sb_publishable_…` or the legacy "anon" key). **Never** use the secret /
+   `service_role` key. `.env.local` is not committed.
+7. Restart `npm run dev`.
 
-Hinweise:
+Good to know:
 
-- Usernames: 3–20 Zeichen, Buchstaben, Zahlen, `_` und `.`, gespeichert in Kleinbuchstaben, jeder nur einmal.
-  Angemeldet wird trotzdem mit der E-Mail. Der Username wird oben in der App angezeigt und später zum Einladen genutzt.
-- Passwörter brauchen in der App mindestens 8 Zeichen. Supabase selbst erlaubt ab 6; wer es auch dort strenger
-  will, stellt die Mindestlänge unter Authentication → Sign In / Providers → Email ein.
-- Supabase verschickt mit dem eingebauten Mailserver nur wenige E-Mails pro Stunde. Zum Ausprobieren reicht das,
-  für echte Nutzer einen eigenen SMTP-Server eintragen (Authentication → SMTP Settings).
-- Abgelaufene, schon benutzte oder im falschen Browser geöffnete Links meldet die Anmeldeseite.
-- Wer bei „Create account“ eine Adresse eingibt, die schon ein Konto hat, bekommt ebenfalls einen Link und ist
-  danach angemeldet. Das ist nicht unsicherer als „Forgot your password?“, beides setzt Zugriff aufs Postfach voraus.
-- Reisen, die vorher nur im Browser gespeichert waren, werden nicht automatisch ins Konto übernommen.
+- **Usernames** have 3–20 characters (letters, numbers, `_` and `.`), are stored in lowercase and are unique.
+  People still sign in with their email; the username is what friends see and use to invite them.
+- **Passwords** need at least 8 characters in the app. Supabase itself allows 6; set a stricter minimum under
+  Authentication → Sign In / Providers → Email if you like.
+- **Emails:** Supabase's built-in mail service only sends a few emails per hour. That's fine for trying things out.
+  For real users, add your own SMTP server (Authentication → SMTP Settings).
+- Expired, already used or wrongly opened links are explained on the sign-in page.
+- Entering an address that already has an account under "Create account" also sends a link that signs in. That is
+  no less safe than "Forgot your password?": both require access to the mailbox.
+- Trips from browser-only mode are not moved into an account.
 
-### Datenbank
+## Publishing on GitHub Pages
 
-| Tabelle | Inhalt |
+The workflow `.github/workflows/deploy.yml` type-checks, lints, tests and builds the app on every push to `main` and
+publishes it at `https://<github-name>.github.io/<repo-name>/`. The app uses relative paths (`base: './'` in
+`vite.config.ts`) and `#/` addresses, so GitHub Pages needs no further configuration.
+
+One-time setup:
+
+1. Create a **public** repository on GitHub (needed for GitHub Pages on the free plan) without README, `.gitignore`
+   or licence, and push the project to it.
+2. **Settings → Pages → Build and deployment → Source:** choose "GitHub Actions".
+3. **Settings → Secrets and variables → Actions → Variables → New repository variable**, twice:
+   `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY`, with the same values as in `.env.local`. Use *variables*, not
+   *secrets*: both values end up in the published app anyway, and the publishable key is meant for that. Never add
+   the secret / `service_role` key.
+4. **Actions → "Deploy to GitHub Pages" → Run workflow**, or push again. Without the variables the workflow stops with
+   a clear message instead of publishing an app without accounts.
+5. **Supabase → Authentication → URL Configuration:** set the Site URL to
+   `https://<github-name>.github.io/<repo-name>/`, add `https://<github-name>.github.io/<repo-name>/**` to the Redirect
+   URLs, and keep `http://localhost:5173` for development.
+
+After that, every push to `main` is online after a minute or two; the **Actions** tab shows the progress.
+
+## How it works
+
+### Signing up and signing in
+
+1. **Create account:** enter only an email. Supabase sends a confirmation link.
+2. The link leads back to the app, where the user chooses a **username** and **password** ("Finish your account").
+3. **Sign in** with email and password. **Forgot your password?** sends a link to choose a new one.
+
+Emails are only used to confirm the address and to reset the password, never for signing in.
+
+### Inviting friends
+
+With accounts, the people in a trip are real accounts. In "New trip" and "Edit trip", **Invite person** replaces
+"Add person": type a username (suggestions appear from two characters), pick one, **Add**, and the invitation is
+sent when the trip is saved. A new trip starts with just you and needs at least one invitation. People without an
+account from older trips are kept; when inviting, you can pick one of them so their expenses carry over. Removing an
+invited person from the list takes the invitation back.
+
+The friend sees the invitation at the top of their trip list and accepts or declines it. Only after accepting do they
+get access and become linked to their person in the trip. Invited people can leave a trip via "Edit trip" →
+**Leave trip**; only the owner can delete it.
+
+### Live updates
+
+When someone else changes a trip (an expense, a repayment, people, an invitation), everyone else sees it right away
+via Supabase Realtime. The app listens to the tables in `src/data/live.ts` and reloads in the background, once for
+several changes in quick succession. Row level security applies here too: everyone only gets changes to their own
+trips. After a lost connection, and whenever you come back to the app (another tab, phone unlocked), it reloads to
+catch up.
+
+### Receipts
+
+In the expense form, **Add a photo of the receipt** opens the camera or your photos (phones offer both). Before
+uploading, the app turns the photo upright and shrinks it to a JPEG of at most 2000 px on the longest side, usually a
+few hundred KB (`src/receipt-image.ts`). The upload only happens when you save the expense. Expenses with a photo
+show a paperclip in the list. Tapping the photo opens it at full size, for zooming in.
+
+- **Where:** the private Storage bucket `receipts`, one folder per trip and expense:
+  `<trip id>/<expense id>/<file id>.jpg`. The expense points at its photo (`expenses.receipt_path`).
+- **Who:** everyone on the trip can look at the photos. Adding, replacing or removing one follows the same rule as
+  changing the expense: its author or the trip owner. The bucket only accepts images up to 5 MB.
+- **Links:** the app shows photos through signed links that work for one hour.
+- **Cleaning up:** a replaced or removed photo is deleted once the expense is saved. Deleting an expense deletes its
+  photo, deleting a trip deletes all its photos, deleting your account deletes the photos of the trips that go with it.
+  Files can only be deleted through the Storage API, not with SQL, so the app does this itself.
+- **Space:** the free Supabase plan includes 1 GB of storage, roughly a few thousand receipts.
+
+### Account settings
+
+Clicking your `@username` at the top opens **Account** (`#/account`):
+
+- **Change username.** People in trips who were named after the old username follow the new one.
+- **Change password**, only with the current password.
+- **Sign out.**
+- **Delete account** (GDPR right to erasure), only with your password and in two steps:
+  - trips you share with others go to the person who joined first (with their receipt photos),
+  - trips only you use are deleted with all their data, receipt photos included,
+  - in other people's trips you stay as a plain name, so their balances stay correct.
+
+### Database and permissions
+
+| Table | Contents |
 |---|---|
-| `trips` | Reisen (Name, Währung) |
-| `trip_access` | Welche Konten eine Reise öffnen dürfen; wer sie anlegt, wird `owner` |
-| `members` | Personen einer Reise, auch ohne Konto; entfernte Personen werden nur markiert |
-| `expenses` | Ausgaben in Cent, mit Zahler und Aufteilungsart |
-| `expense_splits` | Wer an einer Ausgabe beteiligt ist (Anteil oder fester Betrag) |
-| `settlements` | Erfasste Rückzahlungen |
-| `profiles` | Username pro Konto, eindeutig; sichtbar nur für dich und Leute, mit denen du eine Reise teilst |
-| `trip_invitations` | Einladungen per Username: offen, angenommen, abgelehnt oder zurückgezogen |
+| `trips` | Trips (name, currency) |
+| `trip_access` | Which accounts may open a trip; the creator becomes `owner` |
+| `members` | People in a trip, with or without an account; removed people are only marked as removed |
+| `expenses` | Expenses in cents, with payer, split type and the path of the receipt photo |
+| `expense_splits` | Who takes part in an expense (share or fixed amount) |
+| `settlements` | Recorded repayments |
+| `profiles` | One unique username per account, visible only to you and people you share a trip with |
+| `trip_invitations` | Invitations by username: pending, accepted, declined or cancelled |
+| Storage bucket `receipts` | Receipt photos, private (see [Receipts](#receipts)) |
 
-Row Level Security sorgt dafür, dass jedes Konto nur die eigenen Reisen sieht. Innerhalb einer Reise gilt:
-Ausgaben ändern oder löschen darf nur, wer sie angelegt hat, oder der Besitzer der Reise. Rückzahlungen
-erfassen oder rückgängig machen darf nur, wer daran beteiligt ist (Zahler oder Empfänger, mit dem eigenen
-Konto verknüpft). Die App zeigt nur an, was erlaubt ist (`src/permissions.ts`). Gespeichert wird über die
-Funktionen `save_trip` und `save_expense`, jeweils in einer Transaktion. `src/data/schema.test.ts` testet
-Schema, Funktionen und Zugriffsregeln in einer In-Memory-Datenbank (PGlite).
+Row level security makes sure every account only sees its own trips. Within a trip, only the author of an expense or
+the trip's owner may change or delete it, and only the people involved (payer or receiver, linked to their account)
+may record or undo a repayment. The app only offers what is allowed (`src/permissions.ts`). Trips and expenses are
+saved through the database functions `save_trip` and `save_expense`, each in one transaction.
+`src/data/schema.test.ts` runs all migrations in an in-memory Postgres (PGlite) and tests the schema, the functions
+and the access rules with several simulated users.
 
-### Freunde einladen
+### Security notes
 
-Mit Konto besteht eine Reise nur aus echten Konten: In „New trip“ und „Edit trip“ gibt es statt „Add person“
-den Button **Invite person**. Username eintippen (ab zwei Zeichen kommen Vorschläge), auswählen, **Add**, und
-beim Speichern wird die Einladung verschickt. Eine neue Reise startet nur mit dir und braucht mindestens eine
-Einladung. Personen ohne Konto aus älteren Reisen bleiben erhalten; beim Einladen kann man eine davon wählen,
-damit ihre Ausgaben übernommen werden. Wer eingeladen ist, aber wieder aus der Liste entfernt wird, verliert
-die Einladung.
+- `VITE_SUPABASE_URL` and the publishable key are public by design; they are part of the built app. The data is
+  protected by row level security, not by keeping the key secret.
+- Signed-out visitors (`anon`) have no access to any table or function.
+- Never put the secret / `service_role` key into a `VITE_` variable, the repository or GitHub variables: it bypasses
+  all rules.
+- Every new table needs row level security. After new migrations, check Supabase → Advisors → Security Advisor.
+- The `receipts` bucket must stay private (not "Public bucket"). Photos are only reachable through signed links,
+  which the app only gets for trips you are on.
+- Not built yet: a CAPTCHA against spam sign-ups (Supabase supports Cloudflare Turnstile and hCaptcha).
 
-Der Freund sieht die Einladung oben in seiner Reiseliste und kann sie annehmen oder ablehnen. Erst nach dem
-Annehmen hat er Zugriff und ist mit seiner Person verknüpft. Eingeladene können eine Reise über
-„Edit trip“ → **Leave trip** wieder verlassen, löschen kann sie nur der Besitzer. Kehrt man zur App zurück
-(anderer Tab, Handy entsperrt), lädt sie die Reisen neu und zeigt so Änderungen der anderen.
-
-Ohne Konto (nur im Browser) gibt es weiterhin „Add person“ mit freien Namen und die Demo-Reise.
-
-### Live-Aktualisierung
-
-Ändert jemand anderes etwas an einer Reise (Ausgabe, Rückzahlung, Personen, Einladung), erscheint das bei
-allen anderen sofort, über Supabase Realtime. Die App hört auf Änderungen an den Tabellen aus
-`src/data/live.ts` und lädt dann im Hintergrund neu (mehrere Änderungen kurz hintereinander nur einmal).
-Row Level Security gilt auch hier: Jeder bekommt nur Änderungen an seinen eigenen Reisen. Oben rechts zeigt
-ein Punkt den Zustand: pulsierend = live, leerer Kreis = gerade keine Verbindung (dann wird beim Zurückkehren
-zur App und nach dem Wiederverbinden nachgeladen).
-
-## Veröffentlichen mit GitHub Pages
-
-Der Workflow `.github/workflows/deploy.yml` prüft, testet und baut die App bei jedem Push auf `main` und
-veröffentlicht sie unter `https://<github-name>.github.io/<repo-name>/`. Die App nutzt relative Pfade
-(`base: './'` in `vite.config.ts`) und `#/`-Adressen, deshalb braucht GitHub Pages keine weitere Konfiguration.
-
-Einmalig einrichten:
-
-1. Auf GitHub ein **öffentliches** Repository anlegen (für GitHub Pages im kostenlosen Plan nötig), ohne README,
-   `.gitignore` oder Lizenz, weil das Projekt diese schon hat.
-2. Lokal committen und pushen:
-
-   ```powershell
-   git add -A
-   git commit -m "Tripsplit: first version"
-   git remote add origin https://github.com/<github-name>/<repo-name>.git
-   git push -u origin main
-   ```
-
-3. Im Repository **Settings → Pages → Build and deployment → Source: „GitHub Actions“** wählen.
-4. **Settings → Secrets and variables → Actions → Reiter „Variables“ → New repository variable**, zweimal:
-   `VITE_SUPABASE_URL` und `VITE_SUPABASE_KEY`, mit denselben Werten wie in `.env.local`.
-   Als *Variables*, nicht als *Secrets*: Beide Werte stehen ohnehin in der fertigen App, der Publishable Key ist
-   dafür gedacht. Den Secret- bzw. `service_role`-Key **nie** eintragen.
-5. **Actions → „Deploy to GitHub Pages“ → Run workflow** (oder einfach erneut pushen). Fehlen die Variablen,
-   bricht der Workflow mit einer klaren Meldung ab, statt eine App ohne Konto-Funktion zu veröffentlichen.
-6. In **Supabase → Authentication → URL Configuration**:
-   - **Site URL** auf `https://<github-name>.github.io/<repo-name>/` ändern.
-   - Unter **Redirect URLs** `https://<github-name>.github.io/<repo-name>/**` hinzufügen und
-     `http://localhost:5173` behalten, damit die Entwicklung weiter funktioniert.
-
-Danach landet jeder Push auf `main` nach ein bis zwei Minuten online. Den Stand zeigt der Reiter **Actions**.
-
-## Aufbau
+## Project structure
 
 ```
 src/
-  lib/                Rechenlogik ohne UI und Datenbank
-    types.ts          Datentypen (Expense, SplitSpec, Settlement, Member, …)
-    split.ts          Aufteilen: gleich, nach Anteilen, feste Beträge
-    balances.ts       Saldo pro Person
-    settle.ts         Ausgleichsvorschlag mit wenigen Überweisungen
-    money.ts          Eingabe parsen ("12.50" oder "12,50" → 1250) und formatieren
-    example-trip.ts   Beispieldaten für die Demo
-    *.test.ts         Tests
-  pages/              TripListPage (alle Reisen), TripPage (eine Reise)
-  components/         UI-Bausteine, u. a. Dialog, ExpenseForm, TripForm, SettleUpDetails, SlideToConfirm
-  data/               Speichern: Aktionen, Browser- und Supabase-Backend, Login, Schema-Tests
-  trips.ts            Reisen und Mitglieder: anlegen, ändern, prüfen (mit Tests)
-  expense-draft.ts    Formular-Logik für Ausgaben (mit Tests)
-  router.ts           Mini-Router über die URL: #/ = Liste, #/trips/<id> = Reise
-  categories.ts       Kategorien mit Namen und Icons
-  styles.ts           Gemeinsame Klassen für Buttons und Eingabefelder
-  format.ts           Datums- und Textformatierung für die UI (en-GB)
-  index.css           Design-Tokens und Grundstile
-  App.tsx             Wählt Browser- oder Supabase-Modus, Login, Router
+  lib/                   Money logic without UI or database (all with tests)
+    types.ts             Data types (Expense, SplitSpec, Settlement, Member, …)
+    split.ts             Splitting: equally, by shares, exact amounts
+    balances.ts          Balance per person
+    settle.ts            Suggested payments to settle up
+    money.ts             Parsing input ("12.50" or "12,50" → 1250) and formatting
+    example-trip.ts      Sample data for the demo trip
+  data/                  Storage, accounts and sync
+    actions.ts           Every change as an action, applied to the screen right away
+    useTripStore.ts      Trips state: optimistic updates, saving in the background
+    local-backend.ts     Browser-only storage (localStorage)
+    supabase-backend.ts  Supabase storage, supabase-mapping.ts translates rows ↔ app data
+    receipts.ts          Receipt photos: supabase-receipts.ts (Storage), local-receipts.ts (IndexedDB),
+                         useReceiptUrl.ts loads a photo's link
+    supabase-client.ts   Supabase client and handling of email links
+    auth-flow.ts         Password recovery, link errors and notices for the sign-in page
+    auth-messages.ts     Validation and user-facing auth messages
+    account.ts           Change password and username, delete account
+    social.ts            Username search, invitations, leaving trips, live updates
+    live.ts              Realtime tables, useLiveUpdates.ts subscribes to them
+    useSession.ts        Current Supabase session, useProfile.ts the user's username
+    schema.test.ts       Tests for all migrations in PGlite
+  pages/                 Trip list, trip, sign-in, account setup, account settings
+  components/            UI building blocks (Dialog, forms, lists, SlideToConfirm, PartyLayer, …)
+  trips.ts               Trips and people: create, edit, validate
+  expense-draft.ts       Form logic for expenses
+  receipt-image.ts       Shrinks receipt photos before uploading, useReceiptDraft.ts the photo in the form
+  people.ts              Names in the UI ("You" for the signed-in user)
+  permissions.ts         What the signed-in user may do (mirrors the database rules)
+  router.ts              Hash router: #/, #/trips/<id>, #/account
+  motion.ts              Helpers for staggered animations
+  party.ts, party.css    Easter egg
+  categories.ts          Categories with names and icons
+  styles.ts              Shared classes for buttons and inputs
+  format.ts              Dates and texts for the UI (en-GB)
+  index.css              Design tokens, motion, base styles
+  App.tsx                Picks browser-only or Supabase mode, sign-in flow, pages
 supabase/
-  migrations/         Datenbank-Schema (SQL)
-  config.toml         Einstellungen für die Supabase-CLI
+  migrations/            Database schema (SQL)
+  config.toml            Settings for the Supabase CLI
+.github/workflows/       Build and deploy to GitHub Pages
 ```
 
 ## Design
 
-Monochrom: schwarzer Hintergrund, weiße Schrift, Weiß als einzige Akzentfarbe. Die Farben sind als
-Tokens in `src/index.css` definiert. In Komponenten immer die Token-Klassen verwenden, keine festen Farbwerte:
+Monochrome: black background, white text, white as the only accent. Colors are tokens in `src/index.css`; components
+always use the token classes, never fixed color values:
 
-| Token | Klasse | Verwendung |
+| Token | Class | Use |
 |---|---|---|
-| `canvas` | `bg-canvas` | Seitenhintergrund (#000) |
-| `surface` | `bg-surface` | Karten |
-| `raised` | `bg-raised` | Elemente in Karten (Icon-Kacheln, Balken) |
-| `line` / `line-strong` | `border-line` | Rahmen, Trennlinien, Outline-Buttons |
-| `ink` | `text-ink`, `bg-ink` | Text, Akzente (weiße Buttons, Summenkarte) |
-| `ink-muted` / `ink-subtle` | `text-ink-muted` | Nebentext, mindestens 4,5:1 Kontrast |
+| `canvas` | `bg-canvas` | Page background (#000) |
+| `surface` | `bg-surface` | Cards |
+| `raised` | `bg-raised` | Elements inside cards (icon tiles, bars) |
+| `line` / `line-strong` | `border-line` | Borders, dividers, outlined buttons |
+| `ink` | `text-ink`, `bg-ink` | Text and accents (white buttons, total card) |
+| `ink-muted` / `ink-subtle` | `text-ink-muted` | Secondary text, at least 4.5:1 contrast |
 
-Weitere Regeln: Klickflächen mindestens 44 px hoch, sichtbarer Fokusrahmen, Icons nur von Lucide (keine Emojis),
-und Animationen werden bei „reduzierte Bewegung“ abgeschaltet.
+Rules:
 
-**Easter Egg:** 5-mal schnell (innerhalb von 2 Sekunden) auf „Tripsplit“ oben links tippen schaltet den
-Party-Modus ein: alles bunt, Konfetti, fliegende Emojis. Nochmal 5-mal tippen beendet ihn. Der Modus wird im
-Browser gemerkt (`localStorage`). Logik in `src/party.ts`, Styles in `src/party.css` (überschreibt nur die
-Tokens unter `html[data-party]`), Konfetti und Emojis in `src/components/PartyLayer.tsx`. Hier sind Emojis
-ausdrücklich erlaubt.
+- Touch targets are at least 44 px high, focus outlines are visible, icons come from Lucide (no emoji icons).
+- **Motion** is CSS only: `animate-enter` (fade and slide up) with `stagger()` from `src/motion.ts` for lists, dialogs
+  that slide in and fade out, counting amounts and growing balance bars. Everything is switched off for
+  "reduce motion".
+- **Mobile layout:** layout grids use `grid-cols-1` on phones, otherwise long truncated text (`truncate`) still widens
+  the column. Fieldsets may shrink below their content (set globally in `index.css`). Check new screens at 320 px.
 
-## Grundregeln für die Logik
+**Easter egg:** tap "Tripsplit" in the top left 5 times within 2 seconds to start party mode: colors, confetti and
+floating emojis. Tap 5 more times to end it. The browser remembers it (`localStorage`). Logic in `src/party.ts`,
+styles in `src/party.css` (only overrides the tokens under `html[data-party]`), confetti and emojis in
+`src/components/PartyLayer.tsx`. Emojis are explicitly allowed here.
 
-- **Geld immer als ganze Zahl in Cent** (`€12.50` = `1250`). Keine Kommazahlen.
-- **Aufteilungen ergeben immer exakt den Gesamtbetrag.** Restcents werden nach der Methode des größten Rests verteilt.
-- **Die Salden einer Gruppe ergeben immer 0.** `settleUp` bricht ab, wenn nicht.
-- **Anteile (`weight`) sind ganze Zahlen.** „1,5 Anteile“ wird in der UI als 3:2 usw. umgerechnet.
-- **Fehlermeldungen sind auf Englisch**, weil sie in der App angezeigt werden.
+## Rules for the money logic
 
-## Fahrplan
+- **Money is always an integer in cents** (`€12.50` = `1250`). Never floating point.
+- **Splits always add up to the exact total.** Leftover cents go by the largest-remainder method.
+- **A group's balances always add up to 0.** `settleUp` refuses otherwise.
+- **Shares (`weight`) are integers.** "1.5 shares" becomes 3:2 and so on.
+- **Error messages are in English**, because the app shows them.
 
-- [x] Phase 0: Projekt-Setup (Vite, React, TypeScript, Tailwind, Vitest)
-- [x] Phase 1: Rechenlogik + Tests
-- [x] Design-Grundlage: schwarz-weißes Layout, englische Oberfläche
-- [x] Ausgaben erfassen, bearbeiten und löschen (vorerst im Browser gespeichert)
-- [x] Ausgleichen mit Detailansicht und „Slide to settle up“
-- [x] Mehrere Reisen, Mitglieder hinzufügen, umbenennen und entfernen
-- [x] Phase 2: Supabase (Tabellen, Login, Row Level Security), muss noch mit einem echten Projekt getestet werden
-- [ ] Phase 4: Einladungslink und Echtzeit-Sync
-- [ ] Phase 5: PWA, mehrere Währungen, Kategorien, Belege, Export
-- [ ] Phase 6: Testen auf einer echten Reise, Veröffentlichen
+## Roadmap
+
+Done:
+
+- [x] Money logic with tests, black-and-white design, animations
+- [x] Expenses, splitting, balances, settling up with "slide to settle up"
+- [x] Several trips; adding, renaming and removing people
+- [x] Supabase: database, accounts, row level security, permissions
+- [x] Sign-up with email confirmation, username and password, password reset
+- [x] Inviting friends by username, live updates
+- [x] Account settings: change username and password, delete account
+- [x] Receipts: a photo of the receipt on an expense (Supabase Storage)
+- [x] Hosting on GitHub Pages
+
+Open:
+
+- [ ] **PWA:** installable on the home screen, viewing trips offline
+- [ ] **Several currencies** with exchange rates (the database already stores a currency per trip)
+- [ ] **Export** of a trip as CSV or PDF
+- [ ] **Statistics** per category
+- [ ] Restore a deleted expense
+- [ ] Invitation link for friends without an account
+- [ ] Payment links when settling up (e.g. PayPal.me)
+- [ ] Push notifications
+- [ ] CAPTCHA against spam sign-ups, own SMTP server
+- [ ] Final name, test on a real trip

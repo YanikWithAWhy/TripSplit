@@ -25,9 +25,14 @@ export type TripAction =
       invites?: NewInvite[]
     }
   | { type: 'deleteTrip'; tripId: string }
-  /** Adds the expense, or replaces the one with the same id. */
-  | { type: 'saveExpense'; tripId: string; expense: Expense }
-  | { type: 'deleteExpense'; tripId: string; expenseId: string; deletedAt: string }
+  /**
+   * Adds the expense, or replaces the one with the same id.
+   * `uploadedReceipt`: photo uploaded for this save, removed again if saving fails.
+   * `replacedReceipt`: earlier photo the expense no longer uses, removed once saved.
+   */
+  | { type: 'saveExpense'; tripId: string; expense: Expense; uploadedReceipt?: string; replacedReceipt?: string }
+  /** `receiptPath`: the expense's photo, deleted along with it. */
+  | { type: 'deleteExpense'; tripId: string; expenseId: string; deletedAt: string; receiptPath?: string }
   | { type: 'addSettlement'; tripId: string; settlement: Settlement }
   /** Undo recorded repayments (only the ones the user may undo). */
   | { type: 'removeSettlements'; tripId: string; settlementIds: string[] }

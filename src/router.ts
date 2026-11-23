@@ -1,16 +1,22 @@
 import { useMemo, useSyncExternalStore } from 'react'
 
 /**
- * Tiny hash router: "#/" is the trip list, "#/trips/<id>" a single trip.
+ * Tiny hash router: "#/" is the trip list, "#/trips/<id>" a single trip,
+ * "#/account" the account settings.
  * Hash URLs work on any static host without server configuration.
  */
 
-export type Route = { name: 'trips' } | { name: 'trip'; tripId: string }
+export type Route =
+  | { name: 'trips' }
+  | { name: 'trip'; tripId: string }
+  | { name: 'account' }
 
 export const homeHref = '#/'
 export const tripHref = (tripId: string) => `#/trips/${encodeURIComponent(tripId)}`
+export const accountHref = '#/account'
 
 export function parseRoute(hash: string): Route {
+  if (hash.replace(/\/$/, '') === accountHref) return { name: 'account' }
   const match = /^#\/trips\/([^/?#]+)\/?$/.exec(hash)
   if (match) {
     try {

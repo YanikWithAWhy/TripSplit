@@ -5,17 +5,21 @@ import { describeSplit, formatDay } from '../format'
 import { computeShares, formatCents } from '../lib'
 import type { Expense, Member, Share } from '../lib'
 import type { People } from '../people'
+import type { ReceiptStorage } from '../data/receipts'
+import { labelText } from '../styles'
 import { DialogHeader } from './Dialog'
+import { StoredReceipt } from './ReceiptImage'
 
 interface ExpenseDetailsProps {
   expense: Expense
   members: Member[]
   people: People
+  receipts: ReceiptStorage
   onClose: () => void
 }
 
 /** Read-only view of an expense someone else added. */
-export function ExpenseDetails({ expense, members, people, onClose }: ExpenseDetailsProps) {
+export function ExpenseDetails({ expense, members, people, receipts, onClose }: ExpenseDetailsProps) {
   const icon = createElement(categoryIcon(expense.category), {
     className: 'size-5',
     strokeWidth: 1.75,
@@ -58,6 +62,15 @@ export function ExpenseDetails({ expense, members, people, onClose }: ExpenseDet
               </div>
             ))}
           </dl>
+        )}
+
+        {expense.receiptPath && (
+          <div className="mt-6">
+            <p className={labelText}>Receipt</p>
+            <div className="mt-2">
+              <StoredReceipt receipts={receipts} path={expense.receiptPath} label={`Receipt for ${expense.title}`} />
+            </div>
+          </div>
         )}
 
         <p className="mt-4 flex items-start gap-2 text-sm text-ink-muted">

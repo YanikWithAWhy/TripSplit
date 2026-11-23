@@ -1,7 +1,10 @@
 import { Minus, Plus, Trash2 } from 'lucide-react'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { categories } from '../categories'
+import type { ReceiptStorage } from '../data/receipts'
 import { DialogHeader } from './Dialog'
+import { useReceiptDraft } from '../useReceiptDraft'
+import { ReceiptField } from './ReceiptField'
 import { SegmentPill } from './SegmentPill'
 import { FieldError } from './FieldError'
 import { exactStatus, MAX_TITLE_LENGTH, previewShares, validateDraft } from '../expense-draft'
@@ -22,23 +25,58 @@ const splitTypes: { value: SplitType; label: string; hint: string }[] = [
 /** Order in which fields appear, used to focus the first one with an error. */
 const fieldOrder: DraftField[] = ['amount', 'title', 'paidBy', 'date', 'split']
 
+/** What happened to the receipt photo while saving. */
+export interface ReceiptChange {
+  /** New photo uploaded for this save. */
+  uploaded?: string
+  /** Earlier photo the expense no longer uses. */
+  replaced?: string
+}
+
 interface ExpenseFormProps {
   mode: 'new' | 'edit'
   members: Member[]
   /** Shows the signed-in user as "You". */
   people?: People
   initialDraft: ExpenseDraft
-  onSubmit: (expense: NewExpense) => void
+  /** Where a new receipt photo goes: trip and expense (new expenses get their id up front). */
+  tripId: string
+  expenseId: string
+  receipts: ReceiptStorage
+  initialReceiptPath?: string
+  onSubmit: (expense: NewExpense, receipt: ReceiptChange) => void
   onCancel: () => void
   /** Only in edit mode. */
   onDelete?: () => void
 }
 
-export function ExpenseForm({ mode, members, people, initialDraft, onSubmit, onCancel, onDelete }: ExpenseFormProps) {
+export function ExpenseForm({
+  mode,
+  members,
+  people,
+  initialDraft,
+  tripId,
+  expenseId,
+  receipts,
+  initialReceiptPath,
+  onSubmit,
+  onCancel,
+  onDelete,
+}: ExpenseFormProps) {
   const baseId = useId()
   const [draft, setDraft] = useState(initialDraft)
   const [showErrors, setShowErrors] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const receipt = useReceiptDraft(initialReceiptPath)
+  const [uploading, setUploading] = useState(false)
+  /** Set when the form closes, so an upload that finishes afterwards doesn't save anything. */
+  const closedRef = useRef(false)
+  useEffect(() => {
+    closedRef.current = false
+    return () => {
+      closedRef.current = true
+    }
+  }, [])
 
   const result = validateDraft(draft, members)
   const errors: DraftErrors = showErrors && !result.ok ? result.errors : {}
@@ -50,15 +88,39 @@ export function ExpenseForm({ mode, members, people, initialDraft, onSubmit, onC
   const errorId = (field: DraftField) => (errors[field] ? `${baseId}-${field}-error` : undefined)
   const update = (patch: Partial<ExpenseDraft>) => setDraft((d) => ({ ...d, ...patch }))
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
-    if (result.ok) {
-      onSubmit(result.value)
+    if (uploading || receipt.preparing) return
+    if (!result.ok) {
+      setShowErrors(true)
+      const first = fieldOrder.find((field) => result.errors[field])
+      if (first) document.getElementById(fieldId(first))?.focus()
       return
     }
-    setShowErrors(true)
-    const first = fieldOrder.find((field) => result.errors[field])
-    if (first) document.getElementById(fieldId(first))?.focus()
+
+    const photo = receipt.value
+    let uploaded: string | undefined
+    if (photo.kind === 'new') {
+      setUploading(true)
+      receipt.setError(undefined)
+      try {
+        uploaded = await receipts.upload(tripId, expenseId, photo.image)
+      } catch (error) {
+        setUploading(false)
+        receipt.setError(error instanceof Error ? error.message : "Couldn't upload the photo.")
+        document.getElementById(fieldId('receipt'))?.focus()
+        return
+      }
+      if (closedRef.current) {
+        // Closed while uploading: nothing gets saved, so the photo isn't needed.
+        void receipts.remove([uploaded]).catch(() => undefined)
+        return
+      }
+    }
+
+    const receiptPath = uploaded ?? (photo.kind === 'saved' ? photo.path : undefined)
+    const replaced = initialReceiptPath && initialReceiptPath !== receiptPath ? initialReceiptPath : undefined
+    onSubmit({ ...result.value, ...(receiptPath ? { receiptPath } : {}) }, { uploaded, replaced })
   }
 
   const splitHint = splitTypes.find((t) => t.value === draft.splitType)?.hint
@@ -218,6 +280,8 @@ export function ExpenseForm({ mode, members, people, initialDraft, onSubmit, onC
           </div>
           <FieldError id={errorId('split')} message={errors.split} />
         </fieldset>
+
+        <ReceiptField id={fieldId('receipt')} receipts={receipts} draft={receipt} disabled={uploading} />
       </div>
 
       <div className="flex items-center gap-2 border-t border-line px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6">
@@ -239,8 +303,12 @@ export function ExpenseForm({ mode, members, people, initialDraft, onSubmit, onC
               Cancel
             </button>
           </div>
-          <button type="submit" className={buttonPrimary}>
-            {mode === 'new' ? 'Add expense' : 'Save'}
+          <button
+            type="submit"
+            disabled={uploading || receipt.preparing}
+            className={`${buttonPrimary} disabled:cursor-wait disabled:opacity-60`}
+          >
+            {uploading ? 'Uploading photo…' : mode === 'new' ? 'Add expense' : 'Save'}
           </button>
         </div>
       </div>

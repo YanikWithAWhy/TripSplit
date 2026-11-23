@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { CircleAlert, Mail } from 'lucide-react'
+import { CircleAlert, CircleCheck, Mail } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { FieldError } from '../components/FieldError'
 import { PasswordField } from '../components/PasswordField'
@@ -34,6 +34,8 @@ interface SignInPageProps {
   client: SupabaseClient
   /** Problem with an email link the user just opened (expired, used, other browser). */
   linkError: string | null
+  /** Neutral message, e.g. after the account was deleted. */
+  notice?: string | null
   onDismissLinkError: () => void
 }
 
@@ -41,7 +43,7 @@ interface SignInPageProps {
  * Sign in with email + password. New accounts start with the email only:
  * the link in the confirmation email leads to choosing a username and password.
  */
-export function SignInPage({ client, linkError, onDismissLinkError }: SignInPageProps) {
+export function SignInPage({ client, linkError, notice = null, onDismissLinkError }: SignInPageProps) {
   const baseId = useId()
   const [mode, setMode] = useState<AuthMode>('sign-in')
   const [email, setEmail] = useState('')
@@ -158,6 +160,12 @@ export function SignInPage({ client, linkError, onDismissLinkError }: SignInPage
         </div>
       )}
 
+      {notice && (
+        <p role="status" className="mb-6 flex items-start gap-2 rounded-2xl bg-raised p-4 text-sm font-medium">
+          <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {notice}
+        </p>
+      )}
       <form key={mode} onSubmit={submit} noValidate className="animate-enter">
         <h1 className="text-3xl font-semibold tracking-[-0.02em]">{text.title}</h1>
         <p className="mt-2 text-ink-muted">{text.text}</p>

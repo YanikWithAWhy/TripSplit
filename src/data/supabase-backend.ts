@@ -1,7 +1,8 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type { NewInvite, Trip } from '../trips'
 import type { TripAction } from './actions'
-import type { TripBackend } from './backend'
+import { bestEffort, type TripBackend } from './backend'
+import { createSupabaseReceipts } from './supabase-receipts'
 import {
   saveExpenseArgs,
   saveTripArgs,
@@ -26,6 +27,8 @@ function check(result: { error: PostgrestError | null }) {
 
 /** Loads and saves trips in Supabase. Row level security limits everything to the signed-in user's trips. */
 export function createSupabaseBackend(client: SupabaseClient): TripBackend {
+  const receipts = createSupabaseReceipts(client)
+
   /** The people exist after save_trip, so each invitation can point at its person. */
   const sendInvites = async (tripId: string, invites: NewInvite[]) => {
     for (const invite of invites) {
@@ -47,6 +50,7 @@ export function createSupabaseBackend(client: SupabaseClient): TripBackend {
 
   return {
     kind: 'supabase',
+    receipts,
 
     async load() {
       const { data, error } = await client.from('trips').select(TRIP_SELECT).order('created_at')
@@ -78,21 +82,27 @@ export function createSupabaseBackend(client: SupabaseClient): TripBackend {
           return
         }
         case 'deleteTrip':
+          // Photos first: once the trip is gone, nobody may delete them anymore.
+          await receipts.removeTrip(action.tripId)
           check(await client.from('trips').delete().eq('id', action.tripId))
           return
         case 'saveExpense': {
           const trip = findTrip(tripsAfter, action.tripId)
-          check(await client.rpc('save_expense', saveExpenseArgs(trip.id, trip.currency, action.expense)))
+          const saved = await client.rpc('save_expense', saveExpenseArgs(trip.id, trip.currency, action.expense))
+          if (saved.error && action.uploadedReceipt) await bestEffort(receipts.remove([action.uploadedReceipt]))
+          check(saved)
+          if (action.replacedReceipt) await bestEffort(receipts.remove([action.replacedReceipt]))
           return
         }
         case 'deleteExpense':
           check(
             await client
               .from('expenses')
-              .update({ deleted_at: action.deletedAt })
+              .update({ deleted_at: action.deletedAt, ...(action.receiptPath ? { receipt_path: null } : {}) })
               .eq('id', action.expenseId)
               .eq('trip_id', action.tripId),
           )
+          if (action.receiptPath) await bestEffort(receipts.remove([action.receiptPath]))
           return
         case 'addSettlement':
           check(await client.from('settlements').insert(settlementInsert(action.tripId, action.settlement)))

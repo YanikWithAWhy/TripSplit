@@ -32,6 +32,7 @@ export interface ExpenseRow {
   created_at: string
   created_by: string | null
   deleted_at: string | null
+  receipt_path: string | null
   expense_splits: SplitRow[]
 }
 
@@ -67,6 +68,7 @@ export const TRIP_SELECT = [
   'id, name, currency, created_at, created_by',
   'members(id, name, position, user_id, deleted_at)',
   'expenses(id, title, amount_cents, paid_by, spent_on, category, split_type, created_at, created_by, deleted_at,' +
+    ' receipt_path,' +
     ' expense_splits(member_id, position, weight, amount_cents))',
   'settlements(id, from_member, to_member, amount_cents, settled_at)',
   'trip_invitations(id, member_id, invited_user, status)',
@@ -136,6 +138,7 @@ function expenseFromRow(row: ExpenseRow): Expense {
     split: splitFromRows(row.split_type, row.expense_splits),
   }
   if (row.created_by) expense.createdBy = row.created_by
+  if (row.receipt_path) expense.receiptPath = row.receipt_path
   if (row.deleted_at) expense.deletedAt = toIso(row.deleted_at)
   return expense
 }
@@ -191,6 +194,7 @@ export function saveExpenseArgs(tripId: string, currency: string, expense: Expen
       spent_on: expense.date,
       category: expense.category ?? 'other',
       split_type: expense.split.type,
+      receipt_path: expense.receiptPath ?? null,
     },
     p_splits: splitToPayload(expense.split),
   }

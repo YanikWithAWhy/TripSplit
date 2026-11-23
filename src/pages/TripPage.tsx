@@ -16,7 +16,9 @@ import { formatDateRange, todayIso } from '../format'
 import { computeBalances, formatCents, formatSignedCents, settleUp, totalSpent } from '../lib'
 import type { Cents, Expense, MemberId, Transfer } from '../lib'
 import type { TripAction } from '../data/actions'
+import type { ReceiptStorage } from '../data/receipts'
 import { useSocial } from '../data/social'
+import type { ReceiptChange } from '../components/ExpenseForm'
 import { createPeople } from '../people'
 import { stagger } from '../motion'
 import { canEditExpense, canSettle, undoableSettlements } from '../permissions'
@@ -31,17 +33,25 @@ interface TripPageProps {
   me: Me | null
   /** Reload trips after changes made outside the store (invitations, leaving). */
   onRemoteChange: () => void
+  /** Receipt photos (Supabase Storage or this browser). */
+  receipts: ReceiptStorage
 }
 
-/** new/edit: the form. view: read-only, for expenses the user may not change. */
-type ExpenseEditor = { mode: 'new' } | { mode: 'edit'; expense: Expense } | { mode: 'view'; expense: Expense }
+/**
+ * new/edit: the form. view: read-only, for expenses the user may not change.
+ * New expenses get their id when the form opens, so a receipt photo can be uploaded for them.
+ */
+type ExpenseEditor =
+  | { mode: 'new'; id: string }
+  | { mode: 'edit'; expense: Expense }
+  | { mode: 'view'; expense: Expense }
 /** The payment being settled, with the balances from when the dialog opened. */
 type Settling = { transfer: Transfer; balances: Map<MemberId, Cents> }
 
 /** How long the "Settled up" state stays visible before the dialog closes. */
 const SETTLED_DELAY_MS = 700
 
-export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) {
+export function TripPage({ trip, dispatch, me, onRemoteChange, receipts }: TripPageProps) {
   const social = useSocial()
   const [pageError, setPageError] = useState<string | null>(null)
   const { members } = trip
@@ -74,12 +84,21 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
   const dateRange = formatDateRange(visible.map((e) => e.date))
   const now = () => new Date().toISOString()
 
-  const saveExpense = (value: NewExpense) => {
-    const existing = expenseEditor?.mode === 'edit' ? expenseEditor.expense : null
-    const id = existing?.id ?? crypto.randomUUID()
+  const startNewExpense = () => setExpenseEditor({ mode: 'new', id: crypto.randomUUID() })
+
+  const saveExpense = (value: NewExpense, receipt: ReceiptChange) => {
+    if (!expenseEditor || expenseEditor.mode === 'view') return
+    const existing = expenseEditor.mode === 'edit' ? expenseEditor.expense : null
+    const id = existing?.id ?? (expenseEditor.mode === 'new' ? expenseEditor.id : crypto.randomUUID())
     // The author stays the same when editing; new expenses belong to the signed-in user.
     const createdBy = existing ? existing.createdBy : me?.userId
-    dispatch({ type: 'saveExpense', tripId: trip.id, expense: { ...value, id, ...(createdBy ? { createdBy } : {}) } })
+    dispatch({
+      type: 'saveExpense',
+      tripId: trip.id,
+      expense: { ...value, id, ...(createdBy ? { createdBy } : {}) },
+      ...(receipt.uploaded ? { uploadedReceipt: receipt.uploaded } : {}),
+      ...(receipt.replaced ? { replacedReceipt: receipt.replaced } : {}),
+    })
     setExpenseEditor(null)
   }
 
@@ -88,7 +107,8 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
 
   const removeExpense = () => {
     if (expenseEditor?.mode !== 'edit') return
-    dispatch({ type: 'deleteExpense', tripId: trip.id, expenseId: expenseEditor.expense.id, deletedAt: now() })
+    const { id, receiptPath } = expenseEditor.expense
+    dispatch({ type: 'deleteExpense', tripId: trip.id, expenseId: id, deletedAt: now(), ...(receiptPath ? { receiptPath } : {}) })
     setExpenseEditor(null)
   }
 
@@ -155,7 +175,7 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
               Edit trip
             </button>
             <div className="hidden sm:block">
-              <button type="button" onClick={() => setExpenseEditor({ mode: 'new' })} className={buttonPrimary}>
+              <button type="button" onClick={startNewExpense} className={buttonPrimary}>
                 <Plus className="size-4" strokeWidth={2.5} aria-hidden="true" />
                 Add expense
               </button>
@@ -274,7 +294,7 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
 
       <button
         type="button"
-        onClick={() => setExpenseEditor({ mode: 'new' })}
+        onClick={startNewExpense}
         style={stagger(6)}
         className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 inline-flex h-14 animate-enter items-center gap-2 rounded-full bg-ink px-6 font-semibold text-canvas shadow-[0_8px_32px_rgb(0_0_0/0.7)] transition-[background-color,scale] duration-150 hover:bg-ink/85 active:scale-[0.97] active:bg-ink/70 sm:hidden"
       >
@@ -294,12 +314,13 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
             expense={expenseEditor.expense}
             members={members}
             people={people}
+            receipts={receipts}
             onClose={() => setExpenseEditor(null)}
           />
         )}
         {expenseEditor && expenseEditor.mode !== 'view' && (
           <ExpenseForm
-            key={expenseEditor.mode === 'edit' ? expenseEditor.expense.id : 'new'}
+            key={expenseEditor.mode === 'edit' ? expenseEditor.expense.id : expenseEditor.id}
             mode={expenseEditor.mode}
             members={members}
             people={people}
@@ -308,6 +329,10 @@ export function TripPage({ trip, dispatch, me, onRemoteChange }: TripPageProps) 
                 ? draftFromExpense(expenseEditor.expense, members)
                 : emptyDraft(members, todayIso(), meId)
             }
+            tripId={trip.id}
+            expenseId={expenseEditor.mode === 'edit' ? expenseEditor.expense.id : expenseEditor.id}
+            receipts={receipts}
+            initialReceiptPath={expenseEditor.mode === 'edit' ? expenseEditor.expense.receiptPath : undefined}
             onSubmit={saveExpense}
             onCancel={() => setExpenseEditor(null)}
             onDelete={expenseEditor.mode === 'edit' ? removeExpense : undefined}

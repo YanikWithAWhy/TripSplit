@@ -267,9 +267,16 @@ export function updateExpense(trip: Trip, id: string, value: Omit<Expense, 'id'>
   return { ...trip, expenses: trip.expenses.map((e) => (e.id === id ? { ...value, id } : e)) }
 }
 
-/** Soft delete: the expense stays stored but no longer counts. */
+/** Soft delete: the expense stays stored but no longer counts. Its receipt photo is deleted. */
 export function deleteExpense(trip: Trip, id: string, now: string): Trip {
-  return { ...trip, expenses: trip.expenses.map((e) => (e.id === id ? { ...e, deletedAt: now } : e)) }
+  return {
+    ...trip,
+    expenses: trip.expenses.map((e) => {
+      if (e.id !== id) return e
+      const { receiptPath: _deleted, ...rest } = e
+      return { ...rest, deletedAt: now }
+    }),
+  }
 }
 
 export function addSettlement(trip: Trip, transfer: Transfer, meta: { id: string; now: string }): Trip {

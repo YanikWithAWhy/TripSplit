@@ -6,9 +6,12 @@ import memberAccountsMigration from '../../supabase/migrations/20261122160000_me
 import permissionsMigration from '../../supabase/migrations/20261122180000_permissions.sql?raw'
 import invitationsMigration from '../../supabase/migrations/20261122200000_invitations.sql?raw'
 import realtimeMigration from '../../supabase/migrations/20261122220000_realtime.sql?raw'
+import accountSettingsMigration from '../../supabase/migrations/20261123100000_account_settings.sql?raw'
+import receiptsMigration from '../../supabase/migrations/20261123120000_receipts.sql?raw'
 import { computeBalances } from '../lib'
 import type { Settlement } from '../lib'
 import { demoTrip, remapIds, withMeFirst, type Trip } from '../trips'
+import { receiptPath } from './receipts'
 import { saveExpenseArgs, saveTripArgs, settlementInsert, tripFromRow, type TripRow } from './supabase-mapping'
 
 /**
@@ -16,7 +19,7 @@ import { saveExpenseArgs, saveTripArgs, settlementInsert, tripFromRow, type Trip
  * schema, the save functions and the row level security, as two different users.
  */
 
-/** Minimal stand-in for what Supabase provides: roles, auth.users and auth.uid(). */
+/** Minimal stand-in for what Supabase provides: roles, auth.users, auth.uid() and the Storage tables. */
 const SUPABASE_STUB = `
   create role anon nologin;
   create role authenticated nologin;
@@ -27,6 +30,25 @@ const SUPABASE_STUB = `
   grant usage on schema auth to anon, authenticated;
   grant usage on schema public to anon, authenticated;
   create publication supabase_realtime;
+
+  create schema storage;
+  create table storage.buckets (
+    id text primary key,
+    name text not null,
+    public boolean default false,
+    file_size_limit bigint,
+    allowed_mime_types text[]
+  );
+  create table storage.objects (
+    id uuid primary key default gen_random_uuid(),
+    bucket_id text references storage.buckets (id),
+    name text not null,
+    owner_id text default auth.uid()::text,
+    unique (bucket_id, name)
+  );
+  alter table storage.objects enable row level security;
+  grant usage on schema storage to anon, authenticated;
+  grant select, insert, update, delete on storage.objects to anon, authenticated;
 `
 
 /** Returns the same shape as the PostgREST select in TRIP_SELECT. */
@@ -42,7 +64,7 @@ const LOAD_TRIPS = `
       coalesce((
         select json_agg(e) from (
           select e.id, e.title, e.amount_cents, e.paid_by, e.spent_on, e.category, e.split_type,
-            e.created_at, e.created_by, e.deleted_at,
+            e.created_at, e.created_by, e.deleted_at, e.receipt_path,
             coalesce((
               select json_agg(s) from (
                 select member_id, position, weight, amount_cents
@@ -112,6 +134,8 @@ beforeAll(async () => {
   await db.exec(permissionsMigration)
   await db.exec(invitationsMigration)
   await db.exec(realtimeMigration)
+  await db.exec(accountSettingsMigration)
+  await db.exec(receiptsMigration)
   await db.query('insert into auth.users (id) values ($1), ($2)', [ANNA_USER, BEN_USER])
 })
 
@@ -618,5 +642,246 @@ describe('live updates (Realtime)', () => {
   it('can run again without errors', async () => {
     await db.exec(realtimeMigration)
     expect(await published()).toHaveLength(7)
+  })
+})
+
+describe('account settings: username and deleting an account', () => {
+  // Own users, so deleting one doesn't affect the other tests.
+  const DANA = newId()
+  const ERIK = newId()
+  // Dana owns a shared trip (with Erik) and a solo trip, and is a guest in Erik's trip.
+  const shared = withMeFirst(remapIds(demoTrip('', '2026-11-23T10:00:00.000Z'), newId), { userId: DANA, name: 'dana' })
+  const solo = withMeFirst(remapIds(demoTrip('', '2026-11-23T10:00:00.000Z'), newId), { userId: DANA, name: 'dana' })
+  const eriks = withMeFirst(remapIds(demoTrip('', '2026-11-23T10:00:00.000Z'), newId), { userId: ERIK, name: 'erik' })
+
+  const count = async (sql: string, params: unknown[]) =>
+    (await db.query<{ n: number }>(`select count(*)::int as n from ${sql}`, params)).rows[0].n
+
+  beforeAll(async () => {
+    await db.query('insert into auth.users (id) values ($1), ($2)', [DANA, ERIK])
+    await as(DANA, async () => {
+      await db.query('insert into public.profiles (id, username) values ($1, $2)', [DANA, 'dana'])
+      for (const trip of [shared, solo]) {
+        await rpc('save_trip', saveTripArgs(trip))
+        await rpc('save_expense', saveExpenseArgs(trip.id, 'EUR', trip.expenses[0]))
+      }
+    })
+    await as(ERIK, async () => {
+      await db.query('insert into public.profiles (id, username) values ($1, $2)', [ERIK, 'erik'])
+      await rpc('save_trip', saveTripArgs(eriks))
+    })
+    // Erik joined Dana's trip as her second person, Dana joined Erik's as his second person.
+    await db.query(`insert into public.trip_access (trip_id, user_id, role) values ($1, $2, 'editor')`, [shared.id, ERIK])
+    await db.query('update public.members set user_id = $1 where id = $2', [ERIK, shared.members[1].id])
+    await db.query(`insert into public.trip_access (trip_id, user_id, role) values ($1, $2, 'editor')`, [eriks.id, DANA])
+    await db.query('update public.members set user_id = $1 where id = $2', [DANA, eriks.members[1].id])
+  })
+
+  it('changes the username and renames people who were named after it', async () => {
+    await as(DANA, async () => {
+      await rpc('change_username', { p_username: '  Dana.K ' })
+      const profile = await db.query<{ username: string }>('select username from public.profiles where id = $1', [DANA])
+      expect(profile.rows[0].username).toBe('dana.k')
+      const names = await db.query<{ name: string }>('select name from public.members where user_id = $1 order by name', [DANA])
+      // Her own trips used "dana"; in Erik's trip she is still called "Ben" (not her username), so that stays.
+      expect(names.rows.map((r) => r.name)).toEqual(['Ben', 'dana.k', 'dana.k'])
+    })
+  })
+
+  it('refuses taken or invalid usernames', async () => {
+    await as(DANA, async () => {
+      await expect(rpc('change_username', { p_username: 'erik' })).rejects.toThrow(/duplicate key/)
+      await expect(rpc('change_username', { p_username: 'no spaces' })).rejects.toThrow(/3–20 letters/)
+    })
+  })
+
+  it('does not let signed-out visitors call these functions', async () => {
+    await db.exec('set role anon')
+    try {
+      await expect(db.query('select public.delete_my_account()')).rejects.toThrow(/permission denied/)
+      await expect(db.query(`select public.change_username('x_y_z')`)).rejects.toThrow(/permission denied/)
+    } finally {
+      await db.exec('reset role')
+    }
+  })
+
+  it('deletes the account, hands over shared trips and deletes solo trips', async () => {
+    const danasExpense = shared.expenses[0].id
+    await as(DANA, async () => {
+      await db.query('select public.delete_my_account()')
+    })
+
+    // Gone: login, profile, access, her solo trip with everything in it.
+    expect(await count('auth.users where id = $1', [DANA])).toBe(0)
+    expect(await count('public.profiles where id = $1', [DANA])).toBe(0)
+    expect(await count('public.trip_access where user_id = $1', [DANA])).toBe(0)
+    expect(await count('public.trips where id = $1', [solo.id])).toBe(0)
+    expect(await count('public.expenses where trip_id = $1', [solo.id])).toBe(0)
+
+    // The shared trip now belongs to Erik; Dana stays in it as a plain name with her expense.
+    const access = await db.query('select user_id, role from public.trip_access where trip_id = $1', [shared.id])
+    expect(access.rows).toEqual([{ user_id: ERIK, role: 'owner' }])
+    const trip = await db.query<{ created_by: string }>('select created_by from public.trips where id = $1', [shared.id])
+    expect(trip.rows[0].created_by).toBe(ERIK)
+    const danaInShared = await db.query<{ user_id: string | null; name: string }>(
+      'select user_id, name from public.members where id = $1',
+      [shared.members[0].id],
+    )
+    expect(danaInShared.rows[0]).toEqual({ user_id: null, name: 'dana.k' })
+    expect(await count('public.expenses where id = $1 and deleted_at is null', [danasExpense])).toBe(1)
+
+    // In Erik's trip she is a plain name now; Erik still owns it.
+    const inEriks = await db.query<{ user_id: string | null }>('select user_id from public.members where id = $1', [
+      eriks.members[1].id,
+    ])
+    expect(inEriks.rows[0].user_id).toBeNull()
+    expect(await count(`public.trip_access where trip_id = $1 and user_id = $2 and role = 'owner'`, [eriks.id, ERIK])).toBe(1)
+
+    // Erik can still open and work with both trips.
+    await as(ERIK, async () => {
+      const visible = (await loadTrips()).map((t) => t.id).sort()
+      expect(visible).toEqual([shared.id, eriks.id].sort())
+    })
+  })
+})
+
+describe('receipts (photos in Storage)', () => {
+  // Greta owns a trip she shares with Finn, and a solo trip. Hugo is on neither.
+  const GRETA = newId()
+  const FINN = newId()
+  const HUGO = newId()
+  const shared = withMeFirst(remapIds(demoTrip('', '2026-11-23T10:00:00.000Z'), newId), { userId: GRETA, name: 'greta' })
+  const solo = withMeFirst(remapIds(demoTrip('', '2026-11-23T10:00:00.000Z'), newId), { userId: GRETA, name: 'greta' })
+  /** Added by Greta. */
+  const gretasExpense = shared.expenses[0]
+  /** Added by Finn, with a photo. */
+  const finnsExpense = { ...shared.expenses[1], id: newId() }
+  const finnsPhoto = receiptPath(shared.id, finnsExpense.id)
+
+  const addFile = (name: string) => db.query(`insert into storage.objects (bucket_id, name) values ('receipts', $1)`, [name])
+  const deleteFile = async (name: string) =>
+    (await db.query(`delete from storage.objects where bucket_id = 'receipts' and name = $1`, [name])).affectedRows
+  const visibleFiles = async () =>
+    (await db.query<{ name: string }>(`select name from storage.objects where bucket_id = 'receipts' order by name`)).rows.map(
+      (r) => r.name,
+    )
+  const storedReceipt = async (expenseId: string) =>
+    (await db.query<{ receipt_path: string | null }>('select receipt_path from public.expenses where id = $1', [expenseId]))
+      .rows[0]?.receipt_path
+  const soloTripReceipts = async () =>
+    (await db.query<{ paths: string[] }>('select public.my_solo_trip_receipts() as paths')).rows[0].paths
+
+  beforeAll(async () => {
+    await db.query('insert into auth.users (id) values ($1), ($2), ($3)', [GRETA, FINN, HUGO])
+    await as(GRETA, async () => {
+      for (const trip of [shared, solo]) await rpc('save_trip', saveTripArgs(trip))
+      await rpc('save_expense', saveExpenseArgs(shared.id, 'EUR', gretasExpense))
+    })
+    await db.query(`insert into public.trip_access (trip_id, user_id, role) values ($1, $2, 'editor')`, [shared.id, FINN])
+    await db.query('update public.members set user_id = $1 where id = $2', [FINN, shared.members[1].id])
+  })
+
+  it('keeps photos in a private bucket that only takes images', async () => {
+    const bucket = await db.query<{ public: boolean; allowed_mime_types: string[] }>(
+      `select public, allowed_mime_types from storage.buckets where id = 'receipts'`,
+    )
+    expect(bucket.rows[0].public).toBe(false)
+    expect(bucket.rows[0].allowed_mime_types).toContain('image/jpeg')
+  })
+
+  it('lets someone on the trip add a photo to a new expense and loads it with the expense', async () => {
+    await as(FINN, async () => {
+      // The photo uploads before the expense is saved.
+      await addFile(finnsPhoto)
+      await rpc('save_expense', saveExpenseArgs(shared.id, 'EUR', { ...finnsExpense, receiptPath: finnsPhoto }))
+      const loaded = (await loadTrips()).find((t) => t.id === shared.id)
+      expect(loaded?.expenses.find((e) => e.id === finnsExpense.id)?.receiptPath).toBe(finnsPhoto)
+    })
+  })
+
+  it("only links photos from the expense's own folder", async () => {
+    await as(FINN, async () => {
+      const elsewhere = receiptPath(solo.id, finnsExpense.id)
+      await expect(
+        rpc('save_expense', saveExpenseArgs(shared.id, 'EUR', { ...finnsExpense, receiptPath: elsewhere })),
+      ).rejects.toThrow(/expenses_receipt_path_check/)
+    })
+    expect(await storedReceipt(finnsExpense.id)).toBe(finnsPhoto)
+  })
+
+  it('shows photos to people on the trip only', async () => {
+    expect(await as(GRETA, visibleFiles)).toContain(finnsPhoto)
+    expect(await as(FINN, visibleFiles)).toContain(finnsPhoto)
+    expect(await as(HUGO, visibleFiles)).toEqual([])
+    await db.exec('set role anon')
+    try {
+      expect(await visibleFiles()).toEqual([])
+    } finally {
+      await db.exec('reset role')
+    }
+  })
+
+  it('does not let people add photos to trips they are not on, or with odd names', async () => {
+    await as(HUGO, async () => {
+      await expect(addFile(receiptPath(shared.id, newId()))).rejects.toThrow(/row-level security/)
+    })
+    await as(FINN, async () => {
+      await expect(addFile(receiptPath(solo.id, newId()))).rejects.toThrow(/row-level security/)
+      for (const name of [`${shared.id}/photo.jpg`, `${shared.id}/${newId()}/../x.jpg`, `${shared.id}/${newId()}/x.gif`]) {
+        await expect(addFile(name)).rejects.toThrow(/row-level security/)
+      }
+    })
+  })
+
+  it("lets only the author or the trip owner change an existing expense's photo", async () => {
+    const gretasPhoto = receiptPath(shared.id, gretasExpense.id)
+    // Finn may not add a photo to Greta's expense, Greta may.
+    await as(FINN, async () => {
+      await expect(addFile(gretasPhoto)).rejects.toThrow(/row-level security/)
+    })
+    await as(GRETA, () => addFile(gretasPhoto))
+    // Finn can't delete it either (the delete simply finds nothing).
+    expect(await as(FINN, () => deleteFile(gretasPhoto))).toBe(0)
+    // The photo has to sit in the folder of the trip the expense belongs to.
+    await as(GRETA, async () => {
+      await expect(addFile(`${solo.id}/${gretasExpense.id}/${newId()}.jpg`)).rejects.toThrow(/row-level security/)
+    })
+    // As the owner, Greta may also take a photo off Finn's expense.
+    const spare = receiptPath(shared.id, finnsExpense.id)
+    await as(FINN, () => addFile(spare))
+    expect(await as(GRETA, () => deleteFile(spare))).toBe(1)
+    expect(await as(GRETA, () => deleteFile(gretasPhoto))).toBe(1)
+  })
+
+  it('keeps the photo when an older version of the app saves the expense, and removes it on request', async () => {
+    await as(FINN, async () => {
+      const args = saveExpenseArgs(shared.id, 'EUR', { ...finnsExpense, title: 'Renamed' })
+      const { receipt_path: _left, ...older } = args.p_expense
+      await rpc('save_expense', { ...args, p_expense: older })
+      expect(await storedReceipt(finnsExpense.id)).toBe(finnsPhoto)
+
+      await rpc('save_expense', saveExpenseArgs(shared.id, 'EUR', finnsExpense))
+      expect(await storedReceipt(finnsExpense.id)).toBeNull()
+    })
+  })
+
+  it('lists the photos that are deleted together with the account', async () => {
+    const soloExpense = solo.expenses[0]
+    const soloPhoto = receiptPath(solo.id, soloExpense.id)
+    const sharedPhoto = receiptPath(shared.id, gretasExpense.id)
+    await as(GRETA, async () => {
+      await addFile(soloPhoto)
+      await rpc('save_expense', saveExpenseArgs(solo.id, 'EUR', { ...soloExpense, receiptPath: soloPhoto }))
+      await rpc('save_expense', saveExpenseArgs(shared.id, 'EUR', { ...gretasExpense, receiptPath: sharedPhoto }))
+      // Only the solo trip goes with her account; the shared one is handed over with its photos.
+      expect(await soloTripReceipts()).toEqual([soloPhoto])
+    })
+    expect(await as(FINN, soloTripReceipts)).toEqual([])
+    await db.exec('set role anon')
+    try {
+      await expect(db.query('select public.my_solo_trip_receipts()')).rejects.toThrow(/permission denied/)
+    } finally {
+      await db.exec('reset role')
+    }
   })
 })

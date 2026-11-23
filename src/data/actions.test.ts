@@ -32,6 +32,17 @@ describe('applyAction', () => {
     const deleted = applyAction(trips, { type: 'deleteExpense', tripId: 't1', expenseId: 'e1', deletedAt: now })
     expect(deleted[0].expenses[0].deletedAt).toBe(now)
 
+    // The receipt photo goes with it.
+    const withPhoto = [{ ...trip, expenses: trip.expenses.map((e, i) => (i === 0 ? { ...e, receiptPath: 't1/e1/p.jpg' } : e)) }]
+    const deletedWithPhoto = applyAction(withPhoto, {
+      type: 'deleteExpense',
+      tripId: 't1',
+      expenseId: 'e1',
+      deletedAt: now,
+      receiptPath: 't1/e1/p.jpg',
+    })
+    expect(deletedWithPhoto[0].expenses[0]).not.toHaveProperty('receiptPath')
+
     const settlement = { id: 's1', from: 'ben', to: 'anna', amountCents: 100, date: now }
     const settled = applyAction(trips, { type: 'addSettlement', tripId: 't1', settlement })
     expect(settled[0].settlements).toEqual([settlement])
@@ -91,6 +102,8 @@ describe('supabase mapping', () => {
         spent_on: '2026-07-13',
         category: 'transport',
         split_type: 'shares',
+        // Sent as null so the database removes a photo the expense no longer has.
+        receipt_path: null,
       },
       p_splits: [
         { member_id: 'anna', weight: 1 },

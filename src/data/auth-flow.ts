@@ -5,26 +5,29 @@ import { useSyncExternalStore } from 'react'
  * State around email links that the session alone doesn't tell:
  * - recovering: the user opened a password reset link and still has to pick a new password
  * - linkError: an email link didn't work (expired, used, other browser)
+ * - notice: a short message for the sign-in page (e.g. after deleting the account)
  *
  * Kept outside React because supabase-js reports these once, right at startup.
  */
 export interface AuthFlowState {
   recovering: boolean
   linkError: string | null
+  notice: string | null
 }
 
-let state: AuthFlowState = { recovering: false, linkError: null }
+let state: AuthFlowState = { recovering: false, linkError: null, notice: null }
 const listeners = new Set<() => void>()
 
 function update(patch: Partial<AuthFlowState>) {
   const next = { ...state, ...patch }
-  if (next.recovering === state.recovering && next.linkError === state.linkError) return
+  if (next.recovering === state.recovering && next.linkError === state.linkError && next.notice === state.notice) return
   state = next
   listeners.forEach((listener) => listener())
 }
 
 export const markPasswordRecovery = (recovering: boolean) => update({ recovering })
 export const setLinkError = (linkError: string | null) => update({ linkError })
+export const setNotice = (notice: string | null) => update({ notice })
 
 function subscribe(listener: () => void) {
   listeners.add(listener)

@@ -1,5 +1,6 @@
 import { demoTrip, remapIds, type Trip } from '../trips'
-import type { TripBackend } from './backend'
+import { bestEffort, type TripBackend } from './backend'
+import { createLocalReceipts } from './local-receipts'
 
 const STORAGE_KEY = 'tripsplit.v2.trips'
 /** Keys of the earlier single-trip version, migrated into the demo trip once. */
@@ -55,8 +56,10 @@ function firstRun(): Trip[] {
 
 /** Saves all trips in this browser's localStorage. Used when no Supabase project is configured. */
 export function createLocalBackend(): TripBackend {
+  const receipts = createLocalReceipts()
   return {
     kind: 'local',
+    receipts,
     async load() {
       const stored = readJson(STORAGE_KEY)
       if (isTripList(stored)) return stored
@@ -64,8 +67,14 @@ export function createLocalBackend(): TripBackend {
       save(trips)
       return trips
     },
-    async persist(_action, tripsAfter) {
+    async persist(action, tripsAfter) {
       save(tripsAfter)
+      // Photos nothing points at anymore.
+      if (action.type === 'deleteTrip') await bestEffort(receipts.removeTrip(action.tripId))
+      if (action.type === 'saveExpense' && action.replacedReceipt) {
+        await bestEffort(receipts.remove([action.replacedReceipt]))
+      }
+      if (action.type === 'deleteExpense' && action.receiptPath) await bestEffort(receipts.remove([action.receiptPath]))
     },
   }
 }

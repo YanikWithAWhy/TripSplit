@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRoute, tripHref } from './router'
+import { accountHref, parseRoute, tripHref } from './router'
 
 describe('parseRoute', () => {
   it('shows the trip list by default', () => {
@@ -19,5 +19,13 @@ describe('parseRoute', () => {
 
   it('ignores malformed ids', () => {
     expect(parseRoute('#/trips/%E0%A4%A')).toEqual({ name: 'trips' })
+  })
+})
+
+describe('account page', () => {
+  it('reads the account settings address', () => {
+    expect(parseRoute(accountHref)).toEqual({ name: 'account' })
+    expect(parseRoute(`${accountHref}/`)).toEqual({ name: 'account' })
+    expect(parseRoute('#/accounts')).toEqual({ name: 'trips' })
   })
 })

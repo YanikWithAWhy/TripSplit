@@ -7,7 +7,7 @@ import { AccountMenu, LoadErrorView, LoadingView, SyncErrorBanner } from './comp
 import { TripForm } from './components/TripForm'
 import type { TripBackend } from './data/backend'
 import { createLocalBackend } from './data/local-backend'
-import { markPasswordRecovery, setLinkError, useAuthFlow } from './data/auth-flow'
+import { markPasswordRecovery, setLinkError, setNotice, useAuthFlow } from './data/auth-flow'
 import { createSocialApi, SocialContext, useSocial, type IncomingInvitation } from './data/social'
 import { createSupabaseBackend } from './data/supabase-backend'
 import { supabase } from './data/supabase-client'
@@ -15,6 +15,7 @@ import { useProfile } from './data/useProfile'
 import { useSession } from './data/useSession'
 import { useLiveUpdates } from './data/useLiveUpdates'
 import { useTripStore } from './data/useTripStore'
+import { AccountPage } from './pages/AccountPage'
 import { CompleteAccountPage } from './pages/CompleteAccountPage'
 import { SetNewPasswordPage } from './pages/SetNewPasswordPage'
 import { SignInPage } from './pages/SignInPage'
@@ -52,18 +53,32 @@ export default function App() {
  * username/password yet → finish the account. Otherwise → the trips.
  */
 function AccountApp({ client }: { client: SupabaseClient }) {
+  const route = useRoute()
   const session = useSession(client)
-  const { recovering, linkError } = useAuthFlow()
+  const { recovering, linkError, notice } = useAuthFlow()
   const profile = useProfile(client, session?.user.id)
   const backend = useMemo(() => createSupabaseBackend(client), [client])
   const social = useMemo(() => createSocialApi(client), [client])
-  const signOut = () => void client.auth.signOut()
+  const signOut = () => {
+    void client.auth.signOut()
+    navigate(homeHref)
+  }
 
   let content: ReactNode
   if (session === undefined) {
     content = <LoadingView />
   } else if (session === null) {
-    content = <SignInPage client={client} linkError={linkError} onDismissLinkError={() => setLinkError(null)} />
+    content = (
+      <SignInPage
+        client={client}
+        linkError={linkError}
+        notice={notice}
+        onDismissLinkError={() => {
+          setLinkError(null)
+          setNotice(null)
+        }}
+      />
+    )
   } else if (recovering) {
     content = (
       <SetNewPasswordPage client={client} email={session.user.email ?? ''} onDone={() => markPasswordRecovery(false)} />
@@ -85,6 +100,23 @@ function AccountApp({ client }: { client: SupabaseClient }) {
           hasPassword={hasPassword}
           onProfileSaved={profile.setProfile}
         />
+      )
+    } else if (route.name === 'account') {
+      return (
+        <>
+          <Header right={<AccountMenu label={`@${saved.username}`} onSignOut={signOut} />} />
+          <AccountPage
+            client={client}
+            email={session.user.email ?? ''}
+            username={saved.username}
+            onUsernameChanged={(username) => profile.setProfile({ username })}
+            onDeleted={() => {
+              setNotice('Your account has been deleted.')
+              navigate(homeHref)
+            }}
+            onSignOut={signOut}
+          />
+        </>
       )
     } else {
       return (
@@ -194,7 +226,7 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
     content = <LoadErrorView message={syncError ?? 'Unknown error.'} onRetry={() => void reload()} />
   } else if (loadState === 'loading' && trips.length === 0) {
     content = <LoadingView label="Loading trips…" />
-  } else if (route.name === 'trips') {
+  } else if (route.name === 'trips' || route.name === 'account') {
     content = (
       <TripListPage
         trips={trips}
@@ -206,7 +238,16 @@ function TripApp({ backend, me, headerRight }: TripAppProps) {
       />
     )
   } else if (trip) {
-    content = <TripPage key={trip.id} trip={trip} dispatch={dispatch} me={me} onRemoteChange={syncFromServer} />
+    content = (
+      <TripPage
+        key={trip.id}
+        trip={trip}
+        dispatch={dispatch}
+        me={me}
+        onRemoteChange={syncFromServer}
+        receipts={backend.receipts}
+      />
+    )
   } else {
     content = <TripNotFound />
   }

@@ -1,4 +1,4 @@
-import { ReceiptText } from 'lucide-react'
+import { Paperclip, ReceiptText } from 'lucide-react'
 import { categoryIcon } from '../categories'
 import { describeSplit, formatDay } from '../format'
 import { formatCents } from '../lib'
@@ -53,7 +53,15 @@ export function ExpenseList({ expenses, members, people, onEdit }: ExpenseListPr
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="sr-only">Edit: </span>
-                            <span className="block truncate font-medium">{expense.title}</span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate font-medium">{expense.title}</span>
+                              {expense.receiptPath && (
+                                <>
+                                  <Paperclip className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
+                                  <span className="sr-only">(receipt attached)</span>
+                                </>
+                              )}
+                            </span>
                             <span className="block text-sm text-ink-muted">
                               {people.name(expense.paidBy)} paid · {describeSplit(expense.split, members, people)}
                             </span>

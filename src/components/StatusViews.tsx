@@ -1,4 +1,5 @@
-import { LoaderCircle, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
+import { LoaderCircle, LogOut, RefreshCw, TriangleAlert, UserRound } from 'lucide-react'
+import { accountHref } from '../router'
 import { buttonGhost, buttonSecondary } from '../styles'
 
 export function LoadingView({ label = 'Loading…' }: { label?: string }) {
@@ -49,14 +50,24 @@ export function SyncErrorBanner({ message, onReload }: { message: string; onRelo
   )
 }
 
-/** Who is signed in (e.g. "@anna") and a sign-out button. */
+/**
+ * Who is signed in (e.g. "@anna", links to the account settings) and a sign-out button.
+ * On phones "Sign out" is only an icon, so the header fits next to the logo.
+ */
 export function AccountMenu({ label, onSignOut }: { label: string; onSignOut: () => void }) {
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <span className="max-w-32 truncate text-sm text-ink-muted sm:max-w-56">{label}</span>
-      <button type="button" onClick={onSignOut} className={`-mr-2 ${buttonGhost}`}>
+      <a
+        href={accountHref}
+        aria-label={`Account settings for ${label}`}
+        className="inline-flex h-11 min-w-0 items-center gap-2 rounded-full px-3 text-sm font-medium text-ink-muted transition-colors duration-150 hover:bg-raised hover:text-ink"
+      >
+        <UserRound className="size-4 shrink-0" aria-hidden="true" />
+        <span className="max-w-40 truncate sm:max-w-56">{label}</span>
+      </a>
+      <button type="button" onClick={onSignOut} aria-label="Sign out" className={`-mr-2 ${buttonGhost}`}>
         <LogOut className="size-4" aria-hidden="true" />
-        Sign out
+        <span className="hidden sm:inline">Sign out</span>
       </button>
     </div>
   )

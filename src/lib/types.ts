@@ -41,6 +41,8 @@ export interface Expense {
   createdBy?: string
   /** ISO date, e.g. "2026-07-14". */
   date: string
+  /** Photo of the receipt, as a path in the receipts storage ("<trip id>/<expense id>/<file>.jpg"). */
+  receiptPath?: string
   /** Soft delete: deleted expenses stay stored but no longer count. */
   deletedAt?: string | null
 }
